@@ -1,0 +1,10 @@
+﻿# Auto detect text files and perform LF normalization
+* text=auto eol=lf
+
+# Explicit binary files
+*.pt binary
+*.onnx binary
+*.mp4 binary
+*.jpg binary
+*.png binary
+*.db binary
