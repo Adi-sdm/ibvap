@@ -221,15 +221,17 @@ export default function Incidents({ onSelectIncident }) {
                 >
                   <div className="space-y-1 min-w-0">
                     <div className="flex items-center space-x-2">
-                      <span className="font-mono text-xs font-bold text-slate-200">#{ev.event_id}</span>
+                      <span className="font-mono text-xs font-bold text-slate-200">
+                        #{ev.event_id ? ev.event_id.slice(0, 8) : 'EVENT'}
+                      </span>
                       <RiskBadge score={ev.risk_score} severity={ev.severity} />
-                      <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded border uppercase font-semibold ${statusColors[ev.status || 'NEW']}`}>
+                      <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded border uppercase font-semibold ${statusColors[ev.status || 'NEW'] || 'text-slate-400 border-slate-700 bg-slate-800'}`}>
                         {(ev.status || 'NEW').replace('_', ' ')}
                       </span>
                     </div>
 
                     <div className="text-xs font-semibold text-slate-200 truncate capitalize">
-                      {ev.event_type.replace('_', ' ')}
+                      {(ev.event_type || 'INCIDENT').replace(/_/g, ' ')}
                     </div>
 
                     <div className="text-[11px] text-slate-400 font-mono flex items-center space-x-2">
@@ -341,7 +343,14 @@ export default function Incidents({ onSelectIncident }) {
                   )}
                   {selectedIncident.detected_objects && (
                     <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] font-mono text-slate-300">
-                      OBJECTS: {selectedIncident.detected_objects}
+                      OBJECTS: {(() => {
+                        let objs = selectedIncident.detected_objects;
+                        if (typeof objs === 'string') {
+                          try { objs = JSON.parse(objs); } catch { return objs; }
+                        }
+                        if (Array.isArray(objs)) return objs.join(', ');
+                        return JSON.stringify(objs);
+                      })()}
                     </span>
                   )}
                 </div>

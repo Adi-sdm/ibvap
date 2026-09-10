@@ -24,16 +24,18 @@ class CameraPipeline(threading.Thread):
         super().__init__(daemon=True)
         self.camera_id = camera_id
         self.source = source
-        if model is not None:
+        # Provide an isolated YOLO instance per camera pipeline for independent ByteTrack tracking
+        if model is not None and getattr(model, "_ibvap_isolated", False):
             self.model = model
         else:
             try:
-                from ai.inference.model_registry import model_registry
-                self.model = model_registry.get_model("general_detector")
+                from ultralytics import YOLO
+                self.model = YOLO(str(PROJECT_ROOT / "models" / "yolov8n.pt"))
+                self.model._ibvap_isolated = True
             except Exception as e:
-                print(f"[{camera_id}] Error loading detector from registry: {e}")
+                print(f"[{camera_id}] Error loading isolated detector: {e}")
                 self.model = None
-        self.yolo_lock = yolo_lock or threading.Lock()
+        self.yolo_lock = threading.Lock()
         self.event_callback = event_callback
         self.evidence_dir = Path(evidence_dir) if evidence_dir else PROJECT_ROOT / "database" / "evidence"
         self.evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -332,6 +334,7 @@ class CameraPipeline(threading.Thread):
             with self.config_lock:
                 target_classes = list(self.active_class_ids)
                 
+            results = None
             try:
                 with self.yolo_lock:
                     results = self.model.track(
@@ -340,8 +343,16 @@ class CameraPipeline(threading.Thread):
                         classes=target_classes
                     )
             except Exception as e:
-                print(f"[{self.camera_id}] Detection error: {e}")
-                continue
+                print(f"[{self.camera_id}] Track error: {e}, falling back to predict()")
+                try:
+                    with self.yolo_lock:
+                        results = self.model.predict(
+                            frame, conf=0.25, verbose=False,
+                            classes=target_classes
+                        )
+                except Exception as ex:
+                    print(f"[{self.camera_id}] Detection error: {ex}")
+                    continue
             
             current_detections = []
             current_track_ids = set()
@@ -368,13 +379,15 @@ class CameraPipeline(threading.Thread):
                         bx1, by1, bx2, by2 = box.xyxy[0].tolist()
                         bag_boxes.append((b_cls_name, (bx1 + bx2)/2, (by1 + by2)/2))
                 
+                unassigned_counter = 0
                 for box in boxes:
-                    if box.id is None:
-                        continue
-                    
-                    track_id = int(box.id[0])
-                    current_track_ids.add(track_id)
-                    self.track_last_seen[track_id] = 0
+                    track_id = int(box.id[0]) if (box.id is not None and len(box.id) > 0) else None
+                    if track_id is not None:
+                        current_track_ids.add(track_id)
+                        self.track_last_seen[track_id] = 0
+                    else:
+                        unassigned_counter += 1
+                        track_id = unassigned_counter
                     
                     x1, y1, x2, y2 = box.xyxy[0].tolist()
                     conf = float(box.conf[0])
@@ -413,16 +426,33 @@ class CameraPipeline(threading.Thread):
                     in_restricted_zone = False
                     
                     # Virtual Zone Evaluation
-                    zone_events = self.zone_tracker.update_track(
-                        camera_id=self.camera_id,
-                        track_id=track_id, 
-                        class_name=cls_name,
-                        norm_x=foot_x, 
-                        norm_y=foot_y, 
-                        confidence=conf,
-                        bbox=[x1, y1, x2, y2],
-                        timestamp=time.time()
-                    )
+                    zone_events = []
+                    if self.zones:
+                        zone_events = self.zone_tracker.update_track(
+                            camera_id=self.camera_id,
+                            track_id=track_id, 
+                            class_name=cls_name,
+                            norm_x=foot_x, 
+                            norm_y=foot_y, 
+                            confidence=conf,
+                            bbox=[x1, y1, x2, y2],
+                            timestamp=time.time()
+                        )
+                    elif cls_name == "person":
+                        # Zero manual virtual zones: provide baseline perimeter intrusion evaluation
+                        zone_events = [{
+                            "camera_id": self.camera_id,
+                            "track_id": track_id,
+                            "event_type": "INTRUSION_ENTRY",
+                            "zone_id": f"PERIMETER_{self.camera_id[:8]}",
+                            "zone_name": f"{self.sector} Perimeter",
+                            "zone_type": "RESTRICTED",
+                            "class_name": cls_name,
+                            "confidence": conf,
+                            "timestamp": time.time(),
+                            "bbox": [x1, y1, x2, y2],
+                            "loitering_seconds": 0
+                        }]
                     
                     for zone_event in zone_events:
                         if zone_event.get("zone_type") == "RESTRICTED":

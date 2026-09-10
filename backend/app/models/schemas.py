@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field, ConfigDict
+import json
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Optional, Any, Dict
 
 class CameraCreate(BaseModel):
@@ -32,6 +33,16 @@ class CameraOut(BaseModel):
     gemini_enabled: Optional[bool] = True
     is_demo: bool
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("enabled_modules", "overlay_config", mode="before")
+    @classmethod
+    def parse_json_dict(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except Exception:
+                return {}
+        return v
 
 class CameraConfigUpdate(BaseModel):
     name: Optional[str] = None
@@ -80,6 +91,29 @@ class EventOut(BaseModel):
     evidence_snapshot: Optional[str] = None
     evidence_hash: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("detected_objects", "explainability", mode="before")
+    @classmethod
+    def parse_json_list(cls, v):
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v)
+                return parsed if isinstance(parsed, list) else [str(parsed)]
+            except Exception:
+                return [v] if v else []
+        elif v is None:
+            return []
+        return v
+
+    @field_validator("gemini_analysis", mode="before")
+    @classmethod
+    def parse_gemini_analysis(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except Exception:
+                return None
+        return v
 
 class EventStatusUpdate(BaseModel):
     status: str

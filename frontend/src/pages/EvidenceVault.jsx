@@ -194,8 +194,8 @@ export default function EvidenceVault({ onSelectIncident }) {
 
                       {/* Incident ID & Type */}
                       <td className="py-3 px-4">
-                        <div className="font-mono text-slate-200 font-bold">#{eventId.slice(0, 8)}</div>
-                        <div className="text-[11px] text-slate-400 capitalize">{item.event_type.replace('_', ' ')}</div>
+                        <div className="font-mono text-slate-200 font-bold">#{eventId ? eventId.slice(0, 8) : 'EVID'}</div>
+                        <div className="text-[11px] text-slate-400 capitalize">{(item.event_type || 'ALERT').replace(/_/g, ' ')}</div>
                       </td>
 
                       {/* Camera */}

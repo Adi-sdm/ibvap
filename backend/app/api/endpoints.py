@@ -343,6 +343,44 @@ def list_events(
         })
     return {"items": items, "total": total, "offset": offset, "limit": limit}
 
+@router.get("/events/{event_id}")
+def get_event(event_id: str, db: Session = Depends(get_db)):
+    ev = db.query(EventDB).filter(EventDB.event_id == event_id).first()
+    if not ev:
+        raise HTTPException(status_code=404, detail="Event not found")
+    evidence = db.query(EvidenceDB).filter(EvidenceDB.event_id == ev.event_id).first()
+    g_analysis = None
+    if ev.gemini_analysis:
+        try:
+            g_analysis = json.loads(ev.gemini_analysis)
+        except Exception:
+            pass
+    return {
+        "event_id": ev.event_id,
+        "camera_id": ev.camera_id,
+        "event_type": ev.event_type,
+        "severity": ev.severity,
+        "timestamp": ev.timestamp,
+        "track_id": ev.track_id,
+        "confidence": ev.confidence,
+        "risk_score": ev.risk_score,
+        "zone_id": ev.zone_id,
+        "zone_name": ev.zone_name,
+        "class_name": ev.class_name,
+        "ai_summary": ev.ai_summary,
+        "behaviour": ev.behaviour,
+        "detected_objects": json.loads(ev.detected_objects) if ev.detected_objects else [],
+        "explainability": json.loads(ev.explainability) if ev.explainability else [],
+        "gemini_analysis": g_analysis,
+        "gemini_status": ev.gemini_status or "NONE",
+        "status": ev.status,
+        "operator_feedback": ev.operator_feedback,
+        "operator_notes": ev.operator_notes,
+        "is_demo": ev.is_demo,
+        "evidence_snapshot": evidence.snapshot_path if evidence else None,
+        "evidence_hash": evidence.sha256_hash if evidence else None
+    }
+
 @router.patch("/events/{event_id}/status")
 def update_event_status(event_id: str, payload: EventStatusUpdate, db: Session = Depends(get_db)):
     ev = db.query(EventDB).filter(EventDB.event_id == event_id).first()

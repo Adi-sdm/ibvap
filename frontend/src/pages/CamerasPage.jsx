@@ -659,9 +659,9 @@ export default function CamerasPage({ cameras = [], onRefresh }) {
                         <div key={e.event_id} className="p-3 bg-slate-950 rounded border border-slate-800 flex items-center justify-between text-xs">
                           <div>
                             <div className="flex items-center space-x-2">
-                              <span className="font-mono text-slate-300 font-bold">#{e.event_id.slice(0, 8)}</span>
+                              <span className="font-mono text-slate-300 font-bold">#{e.event_id ? e.event_id.slice(0, 8) : 'EVENT'}</span>
                               <RiskBadge score={e.risk_score} severity={e.severity} />
-                              <span className="text-slate-200 capitalize font-medium">{e.event_type.replace('_', ' ')}</span>
+                              <span className="text-slate-200 capitalize font-medium">{(e.event_type || 'INCIDENT').replace(/_/g, ' ')}</span>
                             </div>
                             <div className="text-[11px] text-slate-400 mt-1 font-mono">
                               Track #{e.track_id || 'N/A'} • {new Date(e.timestamp * 1000).toLocaleString()}
@@ -723,7 +723,7 @@ export default function CamerasPage({ cameras = [], onRefresh }) {
                         <div key={ev.event_id} className="p-3 bg-slate-950 rounded border border-slate-800 flex items-center justify-between text-xs">
                           <div className="space-y-1">
                             <div className="flex items-center space-x-2">
-                              <span className="font-mono text-slate-300 font-bold">Evidence #{ev.event_id.slice(0, 8)}</span>
+                              <span className="font-mono text-slate-300 font-bold">Evidence #{ev.event_id ? ev.event_id.slice(0, 8) : 'EVID'}</span>
                               <RiskBadge score={ev.risk_score || 50} severity={ev.severity} />
                             </div>
                             <div className="font-mono text-[10px] text-emerald-400 truncate max-w-sm">

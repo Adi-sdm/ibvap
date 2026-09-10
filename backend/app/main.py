@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
         pipe.join(timeout=5)
     active_pipelines.clear()
 
-app = FastAPI(title="IBVAP - Intelligent Border Video Analytics Platform", lifespan=lifespan)
+app = FastAPI(title="IBVAP — Intelligent Border Video Analytics Platform", lifespan=lifespan)
 
 # CORS
 app.add_middleware(
@@ -244,8 +244,7 @@ def start_camera_pipeline(camera_id: str, source: str, cam_record=None):
     pipeline = CameraPipeline(
         camera_id=camera_id,
         source=actual_source,
-        model=shared_yolo_model,
-        yolo_lock=yolo_lock,
+        model=None, # Isolated YOLO & ByteTrack tracker instance per camera
         event_callback=pipeline_event_callback,
         profile=profile,
         sector=sector,
@@ -349,21 +348,29 @@ def stop_demo_mode():
         return
     system_mode = "live"
     from backend.app.database.session import SessionLocal
-    from backend.app.database.models import CameraDB, EventDB, ANPRDB, EvidenceDB
+    from backend.app.database.models import CameraDB, EventDB, ANPRDB, EvidenceDB, VirtualZoneDB
     
     db = SessionLocal()
     try:
         demo_cams = db.query(CameraDB).filter(CameraDB.is_demo == True).all()
+        demo_cam_ids = [c.camera_id for c in demo_cams]
         for c in demo_cams:
             stop_camera_pipeline(c.camera_id)
             
-        demo_events = db.query(EventDB).filter(EventDB.is_demo == True).all()
+        if demo_cam_ids:
+            db.query(VirtualZoneDB).filter(VirtualZoneDB.camera_id.in_(demo_cam_ids)).delete(synchronize_session=False)
+
+        demo_events = db.query(EventDB).filter((EventDB.is_demo == True) | (EventDB.camera_id.in_(demo_cam_ids))).all()
         for ev in demo_events:
-            db.query(EvidenceDB).filter(EvidenceDB.event_id == ev.event_id).delete()
+            db.query(EvidenceDB).filter(EvidenceDB.event_id == ev.event_id).delete(synchronize_session=False)
             
-        db.query(EventDB).filter(EventDB.is_demo == True).delete()
-        db.query(ANPRDB).filter(ANPRDB.is_demo == True).delete()
-        db.query(CameraDB).filter(CameraDB.is_demo == True).delete()
+        if demo_cam_ids:
+            db.query(EventDB).filter((EventDB.is_demo == True) | (EventDB.camera_id.in_(demo_cam_ids))).delete(synchronize_session=False)
+        else:
+            db.query(EventDB).filter(EventDB.is_demo == True).delete(synchronize_session=False)
+            
+        db.query(ANPRDB).filter(ANPRDB.is_demo == True).delete(synchronize_session=False)
+        db.query(CameraDB).filter(CameraDB.is_demo == True).delete(synchronize_session=False)
         db.commit()
     finally:
         db.close()

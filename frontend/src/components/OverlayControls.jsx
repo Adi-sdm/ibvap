@@ -2,6 +2,12 @@ import React from 'react';
 import { Tag, Percent, Route, ShieldAlert, Cpu } from 'lucide-react';
 
 export default function OverlayControls({ overlayConfig = {}, onChange }) {
+  let cfg = overlayConfig;
+  if (typeof cfg === 'string') {
+    try { cfg = JSON.parse(cfg); } catch { cfg = {}; }
+  }
+  if (!cfg || typeof cfg !== 'object') cfg = {};
+
   const toggles = [
     { key: 'labels', label: 'Labels', icon: Tag },
     { key: 'confidence', label: 'Conf', icon: Percent },
@@ -13,8 +19,8 @@ export default function OverlayControls({ overlayConfig = {}, onChange }) {
   const handleToggle = (key) => {
     if (!onChange) return;
     const updated = {
-      ...overlayConfig,
-      [key]: !overlayConfig[key]
+      ...cfg,
+      [key]: !cfg[key]
     };
     onChange(updated);
   };
@@ -25,7 +31,7 @@ export default function OverlayControls({ overlayConfig = {}, onChange }) {
         HUD
       </span>
       {toggles.map(({ key, label, icon: Icon }) => {
-        const isActive = overlayConfig[key] !== false;
+        const isActive = cfg[key] !== false;
         return (
           <button
             key={key}

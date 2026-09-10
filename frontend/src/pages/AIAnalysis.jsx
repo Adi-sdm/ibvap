@@ -43,7 +43,7 @@ export default function AIAnalysis() {
         velocity: t.velocity !== undefined ? t.velocity : (t.speed_norm ? t.speed_norm * 100 : 12.5),
         confidence: t.confidence !== undefined ? t.confidence : 0.88,
         dwell_time: t.dwell_time !== undefined ? t.dwell_time : 14.0,
-        has_carried_bag: t.has_carried_bag || (t.detected_objects && t.detected_objects.some(o => ['backpack', 'handbag', 'suitcase'].includes(o)))
+        has_carried_bag: t.has_carried_bag || (Array.isArray(t.detected_objects) && t.detected_objects.some(o => ['backpack', 'handbag', 'suitcase'].includes(o)))
       }));
       setAnalysisData({ tracks: normalizedTracks });
       if (sensRes) setSensitivity(sensRes);

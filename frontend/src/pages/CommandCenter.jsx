@@ -157,7 +157,7 @@ export default function CommandCenter({ stats, cameras = [], incidents = [], onS
                         </span>
                       </div>
                       <h2 className="text-lg font-bold text-slate-100 tracking-tight">
-                        {priorityIncident.event_type.replace(/_/g, ' ')}
+                        {(priorityIncident.event_type || 'INCIDENT').replace(/_/g, ' ')}
                       </h2>
                     </div>
 
@@ -188,15 +188,22 @@ export default function CommandCenter({ stats, cameras = [], incidents = [], onS
                     <div>
                       <span className="text-[10px] font-mono uppercase text-slate-400 block mb-1">Detected Objects</span>
                       <div className="flex flex-wrap gap-1 mt-0.5">
-                        {priorityIncident.detected_objects && priorityIncident.detected_objects.length > 0 ? (
-                          priorityIncident.detected_objects.map((obj, i) => (
-                            <span key={i} className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                              {obj}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="font-mono text-[11px] text-slate-400">{priorityIncident.class_name || "person"}</span>
-                        )}
+                        {(() => {
+                          let objs = priorityIncident.detected_objects;
+                          if (typeof objs === 'string') {
+                            try { objs = JSON.parse(objs); } catch { objs = [objs]; }
+                          }
+                          if (Array.isArray(objs) && objs.length > 0) {
+                            return objs.map((obj, i) => (
+                              <span key={i} className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                                {typeof obj === 'string' ? obj : JSON.stringify(obj)}
+                              </span>
+                            ));
+                          }
+                          return (
+                            <span className="font-mono text-[11px] text-slate-400">{priorityIncident.class_name || "person"}</span>
+                          );
+                        })()}
                       </div>
                     </div>
 

@@ -18,7 +18,10 @@ export default function GeminiAnalysisCard({ incident, onUpdated }) {
     explainability: Array.isArray(incident.explainability) ? incident.explainability : []
   };
 
-  const geminiData = incident.gemini_analysis || null;
+  let geminiData = incident.gemini_analysis || null;
+  if (typeof geminiData === 'string') {
+    try { geminiData = JSON.parse(geminiData); } catch { geminiData = null; }
+  }
   const geminiStatus = incident.gemini_status || (geminiData ? 'COMPLETED' : 'NONE');
 
   const handleConsult = async () => {
@@ -170,7 +173,7 @@ export default function GeminiAnalysisCard({ incident, onUpdated }) {
                   </p>
                 </div>
 
-                {geminiData.threat_indicators && geminiData.threat_indicators.length > 0 && (
+                {Array.isArray(geminiData.threat_indicators) && geminiData.threat_indicators.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1">
                     {geminiData.threat_indicators.map((t, idx) => (
                       <span key={idx} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20">
