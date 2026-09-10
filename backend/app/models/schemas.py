@@ -7,12 +7,42 @@ class CameraCreate(BaseModel):
     location: Optional[str] = None
     fps: Optional[float] = 0.0
     resolution: Optional[str] = None
+    profile: Optional[str] = "Border Fence Monitoring"
+    sector: Optional[str] = "Sector Alpha"
+    enabled_modules: Optional[Dict[str, bool]] = None
+    sensitivity_preset: Optional[str] = "standard"
+    alert_threshold: Optional[int] = 60
+    overlay_config: Optional[Dict[str, bool]] = None
+    gemini_enabled: Optional[bool] = True
 
-class CameraOut(CameraCreate):
+class CameraOut(BaseModel):
     camera_id: str
+    name: str
+    rtsp_url: str
+    location: Optional[str] = None
+    fps: Optional[float] = 0.0
+    resolution: Optional[str] = None
     status: str
+    profile: Optional[str] = "Border Fence Monitoring"
+    sector: Optional[str] = "Sector Alpha"
+    enabled_modules: Optional[Any] = None # Parsed JSON dict or string
+    sensitivity_preset: Optional[str] = "standard"
+    alert_threshold: Optional[int] = 60
+    overlay_config: Optional[Any] = None # Parsed JSON dict or string
+    gemini_enabled: Optional[bool] = True
     is_demo: bool
     model_config = ConfigDict(from_attributes=True)
+
+class CameraConfigUpdate(BaseModel):
+    name: Optional[str] = None
+    location: Optional[str] = None
+    profile: Optional[str] = None
+    sector: Optional[str] = None
+    enabled_modules: Optional[Dict[str, bool]] = None
+    sensitivity_preset: Optional[str] = None
+    alert_threshold: Optional[int] = None
+    overlay_config: Optional[Dict[str, bool]] = None
+    gemini_enabled: Optional[bool] = None
 
 class VirtualZoneCreate(BaseModel):
     camera_id: str
@@ -41,6 +71,8 @@ class EventOut(BaseModel):
     behaviour: Optional[str] = "Normal"
     detected_objects: List[str] = []
     explainability: List[str] = []
+    gemini_analysis: Optional[Any] = None
+    gemini_status: Optional[str] = "NONE"
     status: str
     operator_feedback: Optional[str] = None
     operator_notes: Optional[str] = None
@@ -48,7 +80,6 @@ class EventOut(BaseModel):
     evidence_snapshot: Optional[str] = None
     evidence_hash: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
-
 
 class EventStatusUpdate(BaseModel):
     status: str
@@ -110,12 +141,13 @@ class EvidenceVaultItem(BaseModel):
     sha256_hash: str
     verified: bool = True
     ai_summary: Optional[str] = None
+    gemini_status: Optional[str] = "NONE"
     model_config = ConfigDict(from_attributes=True)
 
 class ActivityTimelineItem(BaseModel):
     id: str
     timestamp: float
-    stage: str # DETECTION_STARTED, TRACK_ESTABLISHED, BEHAVIOUR_ANALYZED, INCIDENT_CREATED, EVIDENCE_STORED
+    stage: str
     title: str
     description: str
     camera_id: str
@@ -140,3 +172,46 @@ class AISensitivityConfig(BaseModel):
     loitering_seconds: float = 8.0
     running_threshold: float = 0.02
     anomaly_sensitivity: float = 0.75
+
+class SystemConfigOut(BaseModel):
+    detection_conf: float = 0.25
+    loitering_seconds: float = 8.0
+    running_threshold: float = 0.02
+    anomaly_sensitivity: float = 0.75
+    alert_threshold: int = 60
+    evidence_retention_days: int = 30
+    gemini_model: str = "gemini-2.0-flash"
+    gemini_low_conf_threshold: float = 0.45
+    gemini_auto_trigger: bool = True
+    cooldown_seconds: int = 15
+
+class SystemConfigUpdate(BaseModel):
+    detection_conf: Optional[float] = None
+    loitering_seconds: Optional[float] = None
+    running_threshold: Optional[float] = None
+    anomaly_sensitivity: Optional[float] = None
+    alert_threshold: Optional[int] = None
+    evidence_retention_days: Optional[int] = None
+    gemini_model: Optional[str] = None
+    gemini_low_conf_threshold: Optional[float] = None
+    gemini_auto_trigger: Optional[bool] = None
+    cooldown_seconds: Optional[int] = None
+
+class GeminiStatusResponse(BaseModel):
+    configured: bool
+    model: str
+    enabled: bool
+    masked_key: Optional[str] = None
+    rate_limit_rpm: int = 10
+    status: str # "READY", "UNCONFIGURED", "DISABLED", "RATE_LIMITED", "OFFLINE"
+
+class GeminiConfigUpdate(BaseModel):
+    api_key: Optional[str] = None
+    model: Optional[str] = "gemini-2.0-flash"
+    enabled: Optional[bool] = True
+    rate_limit_rpm: Optional[int] = 10
+    low_conf_threshold: Optional[float] = 0.45
+
+class GeminiTestRequest(BaseModel):
+    api_key: Optional[str] = None
+    model: Optional[str] = None

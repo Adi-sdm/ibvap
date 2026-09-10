@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -39,6 +39,21 @@ async def lifespan(app: FastAPI):
         print(f"[SYSTEM] YOLO model loaded: {MODEL_PATH}")
     except Exception as e:
         print(f"[SYSTEM] YOLO model failed to load: {e}")
+        
+    # Auto-start active cameras from database
+    try:
+        from backend.app.database.session import SessionLocal
+        from backend.app.database.models import CameraDB
+        db = SessionLocal()
+        try:
+            cameras = db.query(CameraDB).filter(CameraDB.is_demo == False).all()
+            for cam in cameras:
+                start_camera_pipeline(cam.camera_id, cam.rtsp_url, cam)
+            print(f"[SYSTEM] Auto-started {len(cameras)} registered camera pipelines.")
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"[SYSTEM] Error auto-starting pipelines: {e}")
     
     yield
     
@@ -49,7 +64,7 @@ async def lifespan(app: FastAPI):
         pipe.join(timeout=5)
     active_pipelines.clear()
 
-app = FastAPI(title="IBVAP", lifespan=lifespan)
+app = FastAPI(title="IBVAP - Intelligent Border Video Analytics Platform", lifespan=lifespan)
 
 # CORS
 app.add_middleware(
@@ -154,7 +169,7 @@ def pipeline_event_callback(event_payload: dict):
         add_timeline_activity(
             stage="EVIDENCE_STORED",
             title="Forensic Evidence Archived",
-            description="Snapshot and 5s video clip hashed with SHA-256 integrity check",
+            description="Snapshot and video clip hashed with SHA-256 cryptographic check",
             camera_id=cid,
             track_id=tid,
             severity="Info"
@@ -167,6 +182,16 @@ def pipeline_event_callback(event_payload: dict):
             title=f"License Plate Recognized: {data.get('plate')}",
             description=f"{data.get('vehicle_type', 'Vehicle').capitalize()} plate extracted with confidence {data.get('confidence', 0):.0%}",
             camera_id=data.get("camera", "Unknown"),
+            severity="Info"
+        )
+        
+    elif event_payload.get("type") == "GEMINI_ANALYSIS_COMPLETED":
+        cid = event_payload.get("camera_id", "Unknown")
+        add_timeline_activity(
+            stage="GEMINI_REASONING",
+            title="Gemini Assisted Analysis Complete",
+            description="Secondary multimodal advisory assessment generated",
+            camera_id=cid,
             severity="Info"
         )
 
@@ -182,7 +207,7 @@ def pipeline_event_callback(event_payload: dict):
 # --- Pipelines ---
 from ai.inference.pipeline import CameraPipeline
 
-def start_camera_pipeline(camera_id: str, source: str):
+def start_camera_pipeline(camera_id: str, source: str, cam_record=None):
     if camera_id in active_pipelines:
         return
     
@@ -190,12 +215,44 @@ def start_camera_pipeline(camera_id: str, source: str):
     if isinstance(source, str) and (source.isdigit() or source.lower() == "webcam"):
         actual_source = int(source) if source.isdigit() else 0
 
+    # Extract configuration attributes
+    profile = "Border Fence Monitoring"
+    sector = "Sector Alpha"
+    enabled_modules = None
+    alert_threshold = 60
+    overlay_config = None
+    gemini_enabled = True
+
+    if cam_record:
+        profile = getattr(cam_record, "profile", profile) or profile
+        sector = getattr(cam_record, "sector", sector) or sector
+        raw_mods = getattr(cam_record, "enabled_modules", None)
+        if raw_mods:
+            try:
+                enabled_modules = json.loads(raw_mods) if isinstance(raw_mods, str) else raw_mods
+            except Exception:
+                pass
+        alert_threshold = getattr(cam_record, "alert_threshold", 60) or 60
+        raw_overlay = getattr(cam_record, "overlay_config", None)
+        if raw_overlay:
+            try:
+                overlay_config = json.loads(raw_overlay) if isinstance(raw_overlay, str) else raw_overlay
+            except Exception:
+                pass
+        gemini_enabled = getattr(cam_record, "gemini_enabled", True)
+
     pipeline = CameraPipeline(
         camera_id=camera_id,
         source=actual_source,
         model=shared_yolo_model,
         yolo_lock=yolo_lock,
-        event_callback=pipeline_event_callback
+        event_callback=pipeline_event_callback,
+        profile=profile,
+        sector=sector,
+        enabled_modules=enabled_modules,
+        alert_threshold=alert_threshold,
+        overlay_config=overlay_config,
+        gemini_enabled=gemini_enabled
     )
     pipeline.start()
     active_pipelines[camera_id] = pipeline
@@ -209,13 +266,13 @@ def stop_camera_pipeline(camera_id: str):
         del active_pipelines[camera_id]
 
 # --- Stream ---
-def generate_mjpeg(camera_id: str):
+def generate_mjpeg(camera_id: str, annotated: bool = True):
     pipeline = active_pipelines.get(camera_id)
     if not pipeline:
         return
     while pipeline.running:
         try:
-            frame_bytes = pipeline.get_latest_jpeg()
+            frame_bytes = pipeline.get_latest_jpeg(annotated=annotated)
             if frame_bytes:
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
@@ -224,11 +281,11 @@ def generate_mjpeg(camera_id: str):
             pass
 
 @app.get("/api/cameras/{camera_id}/stream")
-def stream_camera_feed(camera_id: str):
+def stream_camera_feed(camera_id: str, annotated: bool = True):
     if camera_id not in active_pipelines:
         raise HTTPException(status_code=404, detail="Camera stream not found or inactive")
     return StreamingResponse(
-        generate_mjpeg(camera_id),
+        generate_mjpeg(camera_id, annotated=annotated),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
@@ -241,7 +298,7 @@ def start_pipeline_endpoint(camera_id: str):
         cam = db.query(CameraDB).filter(CameraDB.camera_id == camera_id).first()
         if not cam:
             raise HTTPException(status_code=404, detail="Camera not found")
-        start_camera_pipeline(camera_id, cam.rtsp_url)
+        start_camera_pipeline(camera_id, cam.rtsp_url, cam)
     finally:
         db.close()
     return {"status": "started"}
@@ -276,11 +333,13 @@ def start_demo_mode():
                 name=dc["name"],
                 rtsp_url=dc["url"],
                 status="ONLINE",
+                profile="Border Fence Monitoring",
+                sector="Sector Demo",
                 is_demo=True
             )
             db.add(cam)
             db.commit()
-            start_camera_pipeline(cid, dc["url"])
+            start_camera_pipeline(cid, dc["url"], cam)
     finally:
         db.close()
 
@@ -294,12 +353,10 @@ def stop_demo_mode():
     
     db = SessionLocal()
     try:
-        # Get all demo cameras
         demo_cams = db.query(CameraDB).filter(CameraDB.is_demo == True).all()
         for c in demo_cams:
             stop_camera_pipeline(c.camera_id)
             
-        # Delete demo events and their evidence
         demo_events = db.query(EventDB).filter(EventDB.is_demo == True).all()
         for ev in demo_events:
             db.query(EvidenceDB).filter(EvidenceDB.event_id == ev.event_id).delete()

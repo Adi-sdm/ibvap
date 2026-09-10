@@ -7,11 +7,20 @@ class CameraDB(Base):
 
     camera_id = Column(String, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    rtsp_url = Column(String, nullable=False) # Can be RTSP URL or MP4 path
+    rtsp_url = Column(String, nullable=False) # RTSP URL, webcam index ("0"), or MP4 path
     location = Column(String, default="Perimeter Sector A")
-    status = Column(String, default="ONLINE") # ONLINE, OFFLINE, DEGRADED
+    status = Column(String, default="ONLINE") # ONLINE, OFFLINE, DEGRADED, RECONNECTING
     fps = Column(Float, default=20.0)
     resolution = Column(String, default="800x600")
+    profile = Column(String, default="Border Fence Monitoring") # Border Fence, Checkpoint, Vehicle Inspection, Sensitive Sector, Custom
+    sector = Column(String, default="Sector Alpha")
+    auth_username = Column(String, nullable=True)
+    auth_password = Column(String, nullable=True)
+    enabled_modules = Column(Text, default='{"intrusion": true, "loitering": true, "direction": true, "group": true, "animal_filter": true, "anpr": true, "small_arms": false, "day_night": true}')
+    sensitivity_preset = Column(String, default="standard") # low, standard, high
+    alert_threshold = Column(Integer, default=60) # 0-100 risk score required to dispatch incident
+    overlay_config = Column(Text, default='{"labels": true, "confidence": true, "tracks": true, "zones": true, "speed": false, "debug": false}')
+    gemini_enabled = Column(Boolean, default=True)
     is_demo = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -44,12 +53,13 @@ class EventDB(Base):
     behaviour = Column(String, default="Normal")
     detected_objects = Column(Text, default="[]")
     explainability = Column(Text, default="[]") # JSON list of rules fired
+    gemini_analysis = Column(Text, nullable=True) # JSON object from Gemini Assisted Analysis
+    gemini_status = Column(String, default="NONE") # NONE, PENDING, COMPLETED, OFFLINE, FAILED
     status = Column(String, default='NEW')
     operator_feedback = Column(String, nullable=True)
     operator_notes = Column(Text, nullable=True)
     is_demo = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-
 
 class EvidenceDB(Base):
     __tablename__ = "evidence"
@@ -78,9 +88,15 @@ class ANPRDB(Base):
 class AuditLogDB(Base):
     __tablename__ = 'audit_log'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    action = Column(String, nullable=False)  # CAMERA_ADDED, CAMERA_DELETED, INCIDENT_STATUS_CHANGED, etc.
-    entity_type = Column(String, nullable=True)  # camera, event, zone
+    action = Column(String, nullable=False)
+    entity_type = Column(String, nullable=True)
     entity_id = Column(String, nullable=True)
-    details = Column(Text, nullable=True)  # JSON string with extra info
+    details = Column(Text, nullable=True)
     timestamp = Column(Float, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class SystemConfigDB(Base):
+    __tablename__ = 'system_config'
+    key = Column(String, primary_key=True, index=True)
+    value = Column(Text, nullable=False) # JSON encoded configuration data
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

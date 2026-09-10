@@ -47,3 +47,10 @@ desktop.ini
 *.sublime-project
 *.sublime-workspace
 *.log
+
+# Secrets & API keys
+.secrets*
+*.secrets.json
+database/.secrets.json
+*.db.bak
+
