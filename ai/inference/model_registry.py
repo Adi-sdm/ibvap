@@ -19,12 +19,12 @@ class ModelRegistry:
             "general_detector": {
                 "filename": "yolov8n.pt",
                 "description": "YOLOv8 Nano — General object detection (COCO 80 classes)",
-                "supported_classes": ["person", "bicycle", "car", "motorcycle", "bus", "truck"],
-                "coco_ids": [0, 1, 2, 3, 5, 7],
+                "supported_classes": ["person", "bicycle", "car", "motorcycle", "bus", "truck", "backpack", "handbag", "suitcase", "dog", "cat", "horse", "cow", "sheep"],
+                "coco_ids": [0, 1, 2, 3, 5, 7, 15, 16, 17, 18, 19, 24, 26, 28],
             },
             "small_arms_detector": {
-                "filename": "small_arms_yolov8.pt",  # Does not exist yet
-                "description": "Specialized small-arms/weapon detection model (NOT INCLUDED — requires custom training)",
+                "filename": "small_arms_yolov8.pt",  # Does not exist by default
+                "description": "Specialized small-arms/weapon detection model (Requires custom weights in models/)",
                 "supported_classes": ["handgun", "rifle", "knife"],
                 "coco_ids": [],
             },
@@ -43,6 +43,11 @@ class ModelRegistry:
             return model_name == "anpr_engine"  # EasyOCR is always available if installed
         return (MODELS_DIR / info["filename"]).exists()
     
+    def get_model_status(self, model_name: str) -> str:
+        if self.is_available(model_name):
+            return "READY"
+        return "MODEL UNAVAILABLE"
+    
     def get_model(self, model_name: str):
         """Load and cache a YOLO model. Thread-safe."""
         with self._lock:
@@ -58,7 +63,7 @@ class ModelRegistry:
             
             model_path = MODELS_DIR / info["filename"]
             if not model_path.exists():
-                print(f"[MODEL REGISTRY] Model file not found: {model_path}")
+                print(f"[MODEL REGISTRY] Model file not found: {model_path} (Status: MODEL UNAVAILABLE)")
                 return None
             
             from ultralytics import YOLO
@@ -71,18 +76,20 @@ class ModelRegistry:
         """Return info about all registered models."""
         result = []
         for name, info in self._registry.items():
+            avail = self.is_available(name)
             result.append({
                 "name": name,
                 "description": info["description"],
                 "supported_classes": info["supported_classes"],
-                "available": self.is_available(name),
+                "available": avail,
+                "status": "READY" if avail else "MODEL UNAVAILABLE",
+                "filename": info["filename"]
             })
         return result
     
     def get_supported_classes(self, model_name: str) -> list:
         info = self._registry.get(model_name, {})
         return info.get("supported_classes", [])
-
 
 # Singleton
 model_registry = ModelRegistry()
