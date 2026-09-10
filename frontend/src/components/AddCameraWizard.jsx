@@ -11,17 +11,98 @@ import {
   Radio,
   HardDrive,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  Sliders,
+  Shield,
+  Sparkles
 } from 'lucide-react';
 import { testCameraConnection, createCamera } from '../services/api';
 
+const PROFILE_TEMPLATES = {
+  'Border Fence Monitoring': {
+    sector: 'Sector Alpha',
+    alert_threshold: 60,
+    modules: {
+      intrusion: true,
+      loitering: true,
+      direction: true,
+      group: true,
+      animal_filter: true,
+      anpr: false,
+      small_arms: false,
+      day_night: true
+    }
+  },
+  'Checkpoint Monitoring': {
+    sector: 'Checkpost Bravo',
+    alert_threshold: 50,
+    modules: {
+      intrusion: true,
+      loitering: true,
+      direction: true,
+      group: true,
+      animal_filter: true,
+      anpr: true,
+      small_arms: false,
+      day_night: true
+    }
+  },
+  'Vehicle Inspection': {
+    sector: 'Inspection Lane 1',
+    alert_threshold: 40,
+    modules: {
+      intrusion: false,
+      loitering: false,
+      direction: true,
+      group: false,
+      animal_filter: false,
+      anpr: true,
+      small_arms: false,
+      day_night: true
+    }
+  },
+  'Sensitive Sector': {
+    sector: 'Sector Charlie Restricted',
+    alert_threshold: 40,
+    modules: {
+      intrusion: true,
+      loitering: true,
+      direction: true,
+      group: true,
+      animal_filter: true,
+      anpr: true,
+      small_arms: false,
+      day_night: true
+    }
+  },
+  'Custom': {
+    sector: 'Sector Custom',
+    alert_threshold: 60,
+    modules: {
+      intrusion: true,
+      loitering: true,
+      direction: true,
+      group: true,
+      animal_filter: true,
+      anpr: true,
+      small_arms: false,
+      day_night: true
+    }
+  }
+};
+
 export default function AddCameraWizard({ onClose, onComplete }) {
   const [step, setStep] = useState(1);
-  const [sourceType, setSourceType] = useState('webcam'); // 'webcam', 'rtsp', 'file'
+  const [sourceType, setSourceType] = useState('webcam');
   const [rtspUrl, setRtspUrl] = useState('0');
-  const [name, setName] = useState('Sector Ops Webcam');
+  const [name, setName] = useState('HQ Command Post Camera');
+  const [sector, setSector] = useState('Sector Alpha');
   const [location, setLocation] = useState('HQ Tactical Command Post');
-  
+  const [profile, setProfile] = useState('Border Fence Monitoring');
+  const [alertThreshold, setAlertThreshold] = useState(60);
+  const [geminiEnabled, setGeminiEnabled] = useState(true);
+  const [enabledModules, setEnabledModules] = useState(PROFILE_TEMPLATES['Border Fence Monitoring'].modules);
+
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [testError, setTestError] = useState('');
@@ -34,7 +115,8 @@ export default function AddCameraWizard({ onClose, onComplete }) {
       desc: 'Connect the primary USB or integrated webcam for live testing',
       url: '0',
       defaultName: 'HQ Tactical Command Webcam',
-      defaultLoc: 'HQ Tactical Command Post'
+      defaultLoc: 'HQ Tactical Command Post',
+      defaultProfile: 'Border Fence Monitoring'
     },
     {
       id: 'border_intrusion',
@@ -42,7 +124,8 @@ export default function AddCameraWizard({ onClose, onComplete }) {
       desc: 'Simulated high-risk border fence crossing (demo video)',
       url: 'demo/videos/border_intrusion.mp4',
       defaultName: 'Sector Alpha - Fence 04',
-      defaultLoc: 'North Border Line'
+      defaultLoc: 'North Border Line',
+      defaultProfile: 'Border Fence Monitoring'
     },
     {
       id: 'night_movement',
@@ -50,7 +133,8 @@ export default function AddCameraWizard({ onClose, onComplete }) {
       desc: 'Low-light thermal sector loitering detection clip',
       url: 'demo/videos/night_movement.mp4',
       defaultName: 'Sector Bravo - Thermal Post',
-      defaultLoc: 'East Valley Outpost'
+      defaultLoc: 'East Valley Outpost',
+      defaultProfile: 'Sensitive Sector'
     },
     {
       id: 'vehicle_checkpoint',
@@ -58,16 +142,38 @@ export default function AddCameraWizard({ onClose, onComplete }) {
       desc: 'Road checkpoint monitoring with vehicle and ANPR recognition',
       url: 'demo/videos/vehicle_checkpoint.mp4',
       defaultName: 'Checkpost Bravo Gate 1',
-      defaultLoc: 'Main Highway Ingress'
+      defaultLoc: 'Main Highway Ingress',
+      defaultProfile: 'Checkpoint Monitoring'
     }
   ];
 
-  const handleSelectPreset = (preset) => {
-    setSourceType(preset.id);
-    setRtspUrl(preset.url);
-    setName(preset.defaultName);
-    setLocation(preset.defaultLoc);
+  const handleSelectPreset = (p) => {
+    setSourceType(p.id);
+    setRtspUrl(p.url);
+    setName(p.defaultName);
+    setLocation(p.defaultLoc);
+    if (p.defaultProfile) {
+      handleProfileChange(p.defaultProfile);
+    }
     setTestError('');
+  };
+
+  const handleProfileChange = (newProfile) => {
+    setProfile(newProfile);
+    const tmpl = PROFILE_TEMPLATES[newProfile];
+    if (tmpl) {
+      setSector(tmpl.sector);
+      setAlertThreshold(tmpl.alert_threshold);
+      setEnabledModules({ ...tmpl.modules });
+    }
+  };
+
+  const handleModuleToggle = (key) => {
+    if (key === 'small_arms') return; // Cannot enable missing model
+    setEnabledModules(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
   };
 
   const handleTest = async () => {
@@ -96,7 +202,12 @@ export default function AddCameraWizard({ onClose, onComplete }) {
         name: name || 'Surveillance Feed',
         rtsp_url: rtspUrl,
         location: location,
-        fps: testResult?.fps || 30
+        sector: sector,
+        profile: profile,
+        alert_threshold: alertThreshold,
+        gemini_enabled: geminiEnabled,
+        enabled_modules: enabledModules,
+        fps: testResult?.fps || 20.0
       });
       setStep(5);
     } catch (err) {
@@ -106,19 +217,19 @@ export default function AddCameraWizard({ onClose, onComplete }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-2xl w-full flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-2xl w-full flex flex-col shadow-2xl overflow-hidden max-h-[90vh]">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-950">
+        <div className="px-6 py-3.5 border-b border-slate-800 flex justify-between items-center bg-slate-950/80">
           <div className="flex items-center space-x-2.5">
             <div className="w-8 h-8 rounded bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
               <Camera className="w-4 h-4" />
             </div>
             <div>
               <h2 className="text-sm font-bold text-white tracking-tight uppercase font-mono">
-                Add Ingestion Source
+                Deploy Surveillance Feed
               </h2>
-              <p className="text-[11px] text-slate-400">Connect RTSP, Webcam, or Local Border Patrol Feeds</p>
+              <p className="text-[11px] text-slate-400">Connect camera source & configure autonomous AI mission profile</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition">
@@ -134,21 +245,20 @@ export default function AddCameraWizard({ onClose, onComplete }) {
         </div>
 
         {/* Content */}
-        <div className="p-6">
-          {/* STEP 1: Select Source / URL */}
+        <div className="p-6 overflow-y-auto flex-1">
+          {/* STEP 1: Source */}
           {step === 1 && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold text-white">Step 1: Select Ingestion Source</h3>
-                  <p className="text-xs text-slate-400">Choose a 1-click device preset or enter a custom RTSP / IP stream URL.</p>
+                  <h3 className="text-sm font-semibold text-white">Step 1: Ingestion Source</h3>
+                  <p className="text-xs text-slate-400">Select standard test feed, integrated webcam, or RTSP IP camera.</p>
                 </div>
                 <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                   STEP 1 OF 4
                 </span>
               </div>
 
-              {/* Source Presets Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {presets.map(p => {
                   const isSelected = rtspUrl === p.url;
@@ -172,24 +282,22 @@ export default function AddCameraWizard({ onClose, onComplete }) {
                 })}
               </div>
 
-              {/* Custom Input Field */}
               <div className="pt-2">
                 <label className="block text-xs font-mono font-medium text-slate-400 mb-1.5">
-                  RTSP URL / Device Index / Video Path:
+                  RTSP Stream URL / Webcam Index / File:
                 </label>
                 <div className="flex items-center space-x-2">
                   <input 
                     type="text" 
                     value={rtspUrl}
                     onChange={e => setRtspUrl(e.target.value)}
-                    placeholder="rtsp://admin:pass@192.168.1.10:554/stream or 0 or demo/videos/clip.mp4"
+                    placeholder="rtsp://admin:pass@192.168.1.50:554/live or 0"
                     className="w-full bg-slate-950 border border-slate-800 px-3 py-2 rounded text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
                   />
                   <button
                     type="button"
-                    onClick={() => { setRtspUrl('0'); setName('Local Webcam'); setLocation('HQ Tactical Command'); }}
+                    onClick={() => { setRtspUrl('0'); setName('Local Webcam'); setLocation('HQ Command Post'); }}
                     className="px-2.5 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-mono shrink-0"
-                    title="Set to Webcam 0"
                   >
                     Set 0
                   </button>
@@ -212,7 +320,7 @@ export default function AddCameraWizard({ onClose, onComplete }) {
                   {testing ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Verifying Feed Connection...</span>
+                      <span>Validating Stream Connection...</span>
                     </>
                   ) : (
                     <>
@@ -225,13 +333,13 @@ export default function AddCameraWizard({ onClose, onComplete }) {
             </div>
           )}
 
-          {/* STEP 2: Stream Preview */}
+          {/* STEP 2: Preview */}
           {step === 2 && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold text-white">Step 2: Verify Video Ingestion</h3>
-                  <p className="text-xs text-slate-400">Stream handshake successful. Inspect test frame below.</p>
+                  <h3 className="text-sm font-semibold text-white">Step 2: Stream Handshake</h3>
+                  <p className="text-xs text-slate-400">Stream decoded successfully. Inspect live test frame below.</p>
                 </div>
                 <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                   STEP 2 OF 4
@@ -242,10 +350,10 @@ export default function AddCameraWizard({ onClose, onComplete }) {
                 {testResult?.preview_frame ? (
                   <img src={`data:image/jpeg;base64,${testResult.preview_frame}`} alt="Preview Frame" className="w-full h-full object-contain" />
                 ) : (
-                  <div className="text-slate-500 font-mono text-xs">Awaiting preview frame buffer...</div>
+                  <div className="text-slate-500 font-mono text-xs">Waiting for video stream...</div>
                 )}
                 <div className="absolute bottom-2 left-2 bg-slate-950/80 backdrop-blur px-2.5 py-1 rounded text-[11px] text-slate-200 font-mono border border-slate-800">
-                  Resolution: <span className="text-emerald-400">{testResult?.width}x{testResult?.height}</span> • Target: <span className="text-cyan-400">{testResult?.fps} FPS</span>
+                  Resolution: <span className="text-emerald-400">{testResult?.width}x{testResult?.height}</span> • Detected: <span className="text-cyan-400">{testResult?.fps} FPS</span>
                 </div>
               </div>
 
@@ -255,51 +363,139 @@ export default function AddCameraWizard({ onClose, onComplete }) {
                   className="px-3.5 py-2 bg-slate-800 text-slate-300 rounded text-xs transition flex items-center gap-1.5 hover:bg-slate-700 border border-slate-700"
                 >
                   <ChevronLeft className="w-4 h-4" />
-                  <span>Back to Sources</span>
+                  <span>Back</span>
                 </button>
                 <button 
                   onClick={() => setStep(3)} 
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold transition flex items-center gap-1.5 shadow-sm"
                 >
-                  <span>Configure Metadata</span>
+                  <span>Configure AI Mission Profile</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
           )}
 
-          {/* STEP 3: Metadata */}
+          {/* STEP 3: Mission Profile & Modular AI */}
           {step === 3 && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold text-white">Step 3: Sector Information</h3>
-                  <p className="text-xs text-slate-400">Assign tactical identification and deployment sector.</p>
+                  <h3 className="text-sm font-semibold text-white">Step 3: Surveillance Profile & AI Modules</h3>
+                  <p className="text-xs text-slate-400">Configure autonomous perception parameters and security matrix.</p>
                 </div>
                 <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                   STEP 3 OF 4
                 </span>
               </div>
               
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-mono text-slate-400 mb-1">Camera Tactical Callsign / Name</label>
+                  <label className="block text-xs font-mono text-slate-400 mb-1">Camera Callsign / Name</label>
                   <input 
                     type="text" 
                     value={name} 
                     onChange={e => setName(e.target.value)} 
                     placeholder="e.g. Sector Alpha Gate 01" 
-                    className="w-full bg-slate-950 border border-slate-800 px-3 py-2 rounded text-xs text-white focus:outline-none focus:border-emerald-500 font-sans" 
+                    className="w-full bg-slate-950 border border-slate-800 px-3 py-1.5 rounded text-xs text-white focus:outline-none focus:border-emerald-500 font-sans" 
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-mono text-slate-400 mb-1">Deployment Sector / Zone Location</label>
+                  <label className="block text-xs font-mono text-slate-400 mb-1">Deployment Sector</label>
                   <input 
                     type="text" 
-                    value={location} 
-                    onChange={e => setLocation(e.target.value)} 
-                    placeholder="e.g. North Perimeter Fence" 
-                    className="w-full bg-slate-950 border border-slate-800 px-3 py-2 rounded text-xs text-white focus:outline-none focus:border-emerald-500 font-sans" 
+                    value={sector} 
+                    onChange={e => setSector(e.target.value)} 
+                    placeholder="e.g. Sector Alpha" 
+                    className="w-full bg-slate-950 border border-slate-800 px-3 py-1.5 rounded text-xs text-white focus:outline-none focus:border-emerald-500 font-sans" 
+                  />
+                </div>
+              </div>
+
+              {/* Surveillance Profile Selector */}
+              <div>
+                <label className="block text-xs font-mono text-slate-400 mb-1">Surveillance Profile Preset</label>
+                <select
+                  value={profile}
+                  onChange={e => handleProfileChange(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 px-3 py-2 rounded text-xs text-white focus:outline-none focus:border-emerald-500 font-sans"
+                >
+                  {Object.keys(PROFILE_TEMPLATES).map(pName => (
+                    <option key={pName} value={pName}>{pName}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Modular AI Checkbox Matrix */}
+              <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800">
+                <span className="text-[11px] font-mono text-slate-300 font-semibold uppercase tracking-wider block mb-2">
+                  Active Modular AI Capabilities
+                </span>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {[
+                    { id: 'intrusion', label: 'Intrusion Detection' },
+                    { id: 'loitering', label: 'Loitering / Dwell Tracking' },
+                    { id: 'direction', label: 'Direction & Velocity Anomaly' },
+                    { id: 'group', label: 'Group Movement Analysis' },
+                    { id: 'animal_filter', label: 'Animal Activity Filter' },
+                    { id: 'anpr', label: 'Automatic Number Plate (ANPR)' },
+                    { id: 'day_night', label: 'Day / Night Luminance Adapt' },
+                    { id: 'small_arms', label: 'Weapon / Small Arms Detection', unavailable: true }
+                  ].map(mod => (
+                    <label 
+                      key={mod.id} 
+                      className={`flex items-center gap-2 p-1.5 rounded border transition cursor-pointer ${
+                        mod.unavailable 
+                          ? 'bg-amber-950/20 border-amber-800/40 text-slate-400 cursor-not-allowed'
+                          : enabledModules[mod.id] 
+                            ? 'bg-emerald-950/20 border-emerald-800/40 text-slate-200' 
+                            : 'bg-slate-900/40 border-slate-800/50 text-slate-400'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={mod.unavailable ? false : !!enabledModules[mod.id]}
+                        disabled={mod.unavailable}
+                        onChange={() => handleModuleToggle(mod.id)}
+                        className="rounded border-slate-700 text-emerald-500 focus:ring-0"
+                      />
+                      <span className="text-[11px] font-sans flex-1">{mod.label}</span>
+                      {mod.unavailable && (
+                        <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                          MODEL UNAVAILABLE
+                        </span>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Threshold & Gemini */}
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div>
+                  <div className="flex justify-between text-xs font-mono text-slate-400 mb-1">
+                    <span>Alert Threshold:</span>
+                    <span className="text-emerald-400 font-bold">{alertThreshold} / 100</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="30"
+                    max="90"
+                    value={alertThreshold}
+                    onChange={e => setAlertThreshold(parseInt(e.target.value))}
+                    className="w-full accent-emerald-500 h-1 bg-slate-800 rounded appearance-none cursor-pointer"
+                  />
+                </div>
+                <div className="flex items-center justify-between p-2 bg-slate-950/60 rounded border border-slate-800">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-300 block">Gemini Advisory</span>
+                    <span className="text-[10px] text-slate-500">Secondary verification</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={geminiEnabled}
+                    onChange={e => setGeminiEnabled(e.target.checked)}
+                    className="rounded border-slate-700 text-sky-500 focus:ring-0 w-4 h-4 cursor-pointer"
                   />
                 </div>
               </div>
@@ -329,34 +525,40 @@ export default function AddCameraWizard({ onClose, onComplete }) {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold text-white">Step 4: Final Deployment Verification</h3>
-                  <p className="text-xs text-slate-400">Review parameters before binding to the live inference engine.</p>
+                  <h3 className="text-sm font-semibold text-white">Step 4: Final Verification</h3>
+                  <p className="text-xs text-slate-400">Review deployment parameters before launching inference pipeline.</p>
                 </div>
                 <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                   STEP 4 OF 4
                 </span>
               </div>
 
-              <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 space-y-2.5 text-xs font-sans">
+              <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 space-y-2 text-xs font-sans">
                 <div className="flex justify-between py-1 border-b border-slate-800/80">
                   <span className="text-slate-500 font-mono">Tactical Name:</span>
                   <span className="text-white font-bold">{name}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/80">
-                  <span className="text-slate-500 font-mono">Stream Source:</span>
-                  <span className="text-emerald-400 font-mono truncate max-w-[280px]" title={rtspUrl}>{rtspUrl}</span>
+                  <span className="text-slate-500 font-mono">Sector:</span>
+                  <span className="text-white">{sector}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/80">
-                  <span className="text-slate-500 font-mono">Sector Location:</span>
-                  <span className="text-white">{location || 'Unassigned'}</span>
+                  <span className="text-slate-500 font-mono">Mission Profile:</span>
+                  <span className="text-emerald-400 font-semibold">{profile}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/80">
-                  <span className="text-slate-500 font-mono">Detected Resolution:</span>
-                  <span className="text-slate-200 font-mono">{testResult?.width}x{testResult?.height}</span>
+                  <span className="text-slate-500 font-mono">Alert Threshold:</span>
+                  <span className="text-amber-400 font-mono">{alertThreshold} / 100</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-800/80">
+                  <span className="text-slate-500 font-mono">Gemini Secondary Layer:</span>
+                  <span className={geminiEnabled ? "text-sky-400 font-mono" : "text-slate-500 font-mono"}>
+                    {geminiEnabled ? "Enabled (Advisory)" : "Disabled"}
+                  </span>
                 </div>
                 <div className="flex justify-between py-1">
-                  <span className="text-slate-500 font-mono">Inference Pipeline:</span>
-                  <span className="text-emerald-400 font-mono font-semibold">YOLOv8 + ByteTrack + ANPR Active</span>
+                  <span className="text-slate-500 font-mono">Stream URL:</span>
+                  <span className="text-slate-300 font-mono truncate max-w-[280px]" title={rtspUrl}>{rtspUrl}</span>
                 </div>
               </div>
 
@@ -376,12 +578,12 @@ export default function AddCameraWizard({ onClose, onComplete }) {
                   {creating ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Binding Pipeline...</span>
+                      <span>Binding Inference Engine...</span>
                     </>
                   ) : (
                     <>
                       <Check className="w-4 h-4" />
-                      <span>Confirm & Activate Feed</span>
+                      <span>Activate & Start Feed</span>
                     </>
                   )}
                 </button>
@@ -398,7 +600,7 @@ export default function AddCameraWizard({ onClose, onComplete }) {
               <div>
                 <h3 className="text-base font-bold text-white tracking-tight">Camera Feed Ingestion Activated</h3>
                 <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
-                  The video stream has been registered with the background inference thread. Real-time tracks and alerts will now populate telemetry dashboards.
+                  The feed is now active with profile <span className="text-emerald-400 font-semibold">{profile}</span>. Frame annotations and alarms are running in real time.
                 </p>
               </div>
               

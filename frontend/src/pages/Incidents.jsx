@@ -24,6 +24,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import RiskBadge from '../components/RiskBadge';
+import GeminiAnalysisCard from '../components/GeminiAnalysisCard';
 import { getEvents, updateEventStatus, updateEventFeedback } from '../services/api';
 
 export default function Incidents({ onSelectIncident }) {
@@ -346,6 +347,15 @@ export default function Incidents({ onSelectIncident }) {
                 </div>
               </div>
 
+              {/* Dual AI Analysis & Advisory Verification */}
+              <GeminiAnalysisCard 
+                incident={selectedIncident} 
+                onUpdated={(updated) => {
+                  setSelectedIncident(updated);
+                  setIncidents(prev => prev.map(i => i.event_id === updated.event_id ? updated : i));
+                }} 
+              />
+
               {/* Forensic Evidence Snapshot & SHA-256 Box */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Evidence Snapshot */}
@@ -355,9 +365,13 @@ export default function Incidents({ onSelectIncident }) {
                     <span>HD 1080p Frame</span>
                   </div>
                   <div className="relative aspect-video rounded overflow-hidden bg-slate-900 border border-slate-800 flex items-center justify-center">
-                    {selectedIncident.snapshot_url ? (
+                    {(selectedIncident.evidence_snapshot || selectedIncident.snapshot_url) ? (
                       <img 
-                        src={selectedIncident.snapshot_url} 
+                        src={selectedIncident.evidence_snapshot 
+                          ? (selectedIncident.evidence_snapshot.startsWith('/') || selectedIncident.evidence_snapshot.startsWith('http') 
+                              ? selectedIncident.evidence_snapshot 
+                              : '/' + selectedIncident.evidence_snapshot.replace(/\\/g, '/'))
+                          : selectedIncident.snapshot_url} 
                         alt="Evidence snapshot" 
                         className="w-full h-full object-cover"
                         onError={(e) => { e.target.onerror = null; e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="180" fill="%230f172a"><rect width="300" height="180"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%2364748b" font-size="12">SURVEILLANCE FRAME</text></svg>'; }}
@@ -379,10 +393,10 @@ export default function Incidents({ onSelectIncident }) {
                     </div>
                     <div className="text-[11px] text-slate-400 mb-1">SHA-256 Checksum:</div>
                     <div className="p-2 rounded bg-slate-900 border border-slate-800 font-mono text-[10px] text-emerald-400 break-all select-all flex items-center justify-between">
-                      <span>{selectedIncident.sha256 || 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'}</span>
+                      <span>{selectedIncident.evidence_hash || selectedIncident.sha256 || 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'}</span>
                     </div>
                     <button
-                      onClick={() => copyHash(selectedIncident.sha256 || 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')}
+                      onClick={() => copyHash(selectedIncident.evidence_hash || selectedIncident.sha256 || 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')}
                       className="mt-2 w-full py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono flex items-center justify-center space-x-1.5 transition border border-slate-700"
                     >
                       {copiedHash ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
