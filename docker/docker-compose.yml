@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  ibvap-backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: ibvap-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../database:/app/database
+      - ../demo:/app/demo
+      - ../models:/app/models
+    restart: unless-stopped
