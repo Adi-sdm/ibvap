@@ -1,7 +1,7 @@
-﻿\"\"\"
+"""
 IBVAP Verification Suite Runner
 Executes all unit, integration, and end-to-end test scenarios.
-\"\"\"
+"""
 import sys
 import subprocess
 from pathlib import Path
