@@ -14,6 +14,7 @@ TESTS = [
     ("Offline ANPR Engine", "tests/test_anpr.py"),
     ("FastAPI REST Endpoints", "tests/test_backend_api.py"),
     ("End-to-End Surveillance Flow", "tests/test_end_to_end.py"),
+    ("Enterprise Profiles and Gemini Services", "tests/test_enterprise_features.py"),
 ]
 
 def run_all():

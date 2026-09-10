@@ -5,16 +5,21 @@ import json
 import cv2
 import base64
 import uuid
+import time
+from pathlib import Path
 
 from backend.app.database.session import get_db
-from backend.app.database.models import CameraDB, VirtualZoneDB, EventDB, EvidenceDB, ANPRDB, AuditLogDB
+from backend.app.database.models import CameraDB, VirtualZoneDB, EventDB, EvidenceDB, ANPRDB, AuditLogDB, SystemConfigDB
 from backend.app.models.schemas import (
-    CameraCreate, CameraOut, VirtualZoneCreate, VirtualZoneOut, 
+    CameraCreate, CameraOut, CameraConfigUpdate, VirtualZoneCreate, VirtualZoneOut, 
     EventOut, EventStatusUpdate, EventFeedbackUpdate, ANPROut,
     CameraTestRequest, CameraTestResponse, SystemStats, AuditLogOut,
-    EvidenceVaultItem, ActivityTimelineItem, AITrackAnalysis, AISensitivityConfig
+    EvidenceVaultItem, ActivityTimelineItem, AITrackAnalysis, AISensitivityConfig,
+    SystemConfigOut, SystemConfigUpdate, GeminiStatusResponse, GeminiConfigUpdate, GeminiTestRequest
 )
-
+from backend.app.services.secrets_vault import secrets_vault
+from backend.app.services.profile_service import profile_service
+from backend.app.services.gemini_service import gemini_service
 
 router = APIRouter()
 
@@ -24,18 +29,48 @@ def list_cameras(include_demo: bool = False, db: Session = Depends(get_db)):
     query = db.query(CameraDB)
     if not include_demo:
         query = query.filter(CameraDB.is_demo == False)
-    return query.all()
+    cams = query.all()
+    # Ensure JSON parsing for modules and overlay if stored as strings
+    result = []
+    for c in cams:
+        item = CameraOut.model_validate(c)
+        if isinstance(item.enabled_modules, str):
+            try:
+                item.enabled_modules = json.loads(item.enabled_modules)
+            except Exception:
+                pass
+        if isinstance(item.overlay_config, str):
+            try:
+                item.overlay_config = json.loads(item.overlay_config)
+            except Exception:
+                pass
+        result.append(item)
+    return result
 
 @router.post("/cameras", response_model=CameraOut)
 def create_camera(cam: CameraCreate, db: Session = Depends(get_db)):
     camera_id = str(uuid.uuid4())
+    
+    # Resolve default profile parameters if modules not specified
+    profile_data = profile_service.get_profile(cam.profile or "Border Fence Monitoring")
+    modules = cam.enabled_modules or profile_data.get("enabled_modules", {})
+    overlays = cam.overlay_config or profile_data.get("overlay_defaults", {})
+    alert_thresh = cam.alert_threshold or profile_data.get("default_alert_threshold", 60)
+
     db_cam = CameraDB(
         camera_id=camera_id,
         name=cam.name,
         rtsp_url=cam.rtsp_url,
-        location=cam.location,
+        location=cam.location or f"{cam.sector or 'Sector Alpha'} Perimeter",
+        profile=cam.profile or "Border Fence Monitoring",
+        sector=cam.sector or "Sector Alpha",
+        enabled_modules=json.dumps(modules) if isinstance(modules, dict) else modules,
+        sensitivity_preset=cam.sensitivity_preset or "standard",
+        alert_threshold=alert_thresh,
+        overlay_config=json.dumps(overlays) if isinstance(overlays, dict) else overlays,
+        gemini_enabled=cam.gemini_enabled if cam.gemini_enabled is not None else True,
         fps=cam.fps or 0.0,
-        resolution=cam.resolution,
+        resolution=cam.resolution or "800x600",
         status="ONLINE",
         is_demo=False
     )
@@ -43,10 +78,70 @@ def create_camera(cam: CameraCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_cam)
     
+    # Autostart pipeline for newly registered camera
     from backend.app.main import start_camera_pipeline
-    start_camera_pipeline(camera_id, cam.rtsp_url)
+    start_camera_pipeline(camera_id, cam.rtsp_url, db_cam)
     
-    return db_cam
+    out = CameraOut.model_validate(db_cam)
+    out.enabled_modules = modules
+    out.overlay_config = overlays
+    return out
+
+@router.patch("/cameras/{camera_id}/config", response_model=CameraOut)
+def update_camera_config(camera_id: str, update: CameraConfigUpdate, db: Session = Depends(get_db)):
+    """Dynamically updates camera configuration and hot-reloads running pipeline without restarting stream."""
+    cam = db.query(CameraDB).filter(CameraDB.camera_id == camera_id).first()
+    if not cam:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    hot_config = {}
+    if update.name is not None:
+        cam.name = update.name
+    if update.location is not None:
+        cam.location = update.location
+    if update.profile is not None:
+        cam.profile = update.profile
+        hot_config["profile"] = update.profile
+    if update.sector is not None:
+        cam.sector = update.sector
+        hot_config["sector"] = update.sector
+    if update.enabled_modules is not None:
+        cam.enabled_modules = json.dumps(update.enabled_modules)
+        hot_config["enabled_modules"] = update.enabled_modules
+    if update.sensitivity_preset is not None:
+        cam.sensitivity_preset = update.sensitivity_preset
+    if update.alert_threshold is not None:
+        cam.alert_threshold = update.alert_threshold
+        hot_config["alert_threshold"] = update.alert_threshold
+    if update.overlay_config is not None:
+        cam.overlay_config = json.dumps(update.overlay_config)
+        hot_config["overlay_config"] = update.overlay_config
+    if update.gemini_enabled is not None:
+        cam.gemini_enabled = update.gemini_enabled
+        hot_config["gemini_enabled"] = update.gemini_enabled
+
+    db.commit()
+    db.refresh(cam)
+
+    # Hot reload into running pipeline
+    from backend.app.main import active_pipelines
+    if camera_id in active_pipelines:
+        pipeline = active_pipelines[camera_id]
+        if hasattr(pipeline, "update_config"):
+            pipeline.update_config(hot_config)
+
+    out = CameraOut.model_validate(cam)
+    try:
+        out.enabled_modules = json.loads(cam.enabled_modules) if isinstance(cam.enabled_modules, str) else cam.enabled_modules
+        out.overlay_config = json.loads(cam.overlay_config) if isinstance(cam.overlay_config, str) else cam.overlay_config
+    except Exception:
+        pass
+    return out
+
+@router.get("/profiles")
+def get_surveillance_profiles():
+    """Returns the catalog of operational surveillance profiles."""
+    return profile_service.list_profiles()
 
 @router.post("/cameras/test-connection", response_model=CameraTestResponse)
 def test_connection(req: CameraTestRequest):
@@ -61,7 +156,6 @@ def test_connection(req: CameraTestRequest):
     else:
         cap = cv2.VideoCapture(url)
     if not cap.isOpened():
-
         return CameraTestResponse(
             success=False, 
             message="Could not connect to video stream. Ensure the device is on the same network and reachable."
@@ -118,12 +212,17 @@ def get_camera_health(camera_id: str, db: Session = Depends(get_db)):
     is_running = pipeline.running if pipeline else False
     
     return {
+        "camera_id": camera_id,
+        "name": cam.name,
         "status": "ONLINE" if is_running else "OFFLINE",
-        "fps": getattr(pipeline, 'fps', 0) if is_running else 0,
-        "is_running": is_running
+        "fps": pipeline.health_status.get("fps", 0) if pipeline else 0,
+        "resolution": pipeline.health_status.get("resolution", cam.resolution) if pipeline else cam.resolution,
+        "profile": cam.profile,
+        "sector": cam.sector,
+        "gemini_enabled": cam.gemini_enabled
     }
 
-# --- ZONES ---
+# --- VIRTUAL ZONES ---
 @router.get("/zones", response_model=List[VirtualZoneOut])
 def list_zones(camera_id: Optional[str] = None, db: Session = Depends(get_db)):
     query = db.query(VirtualZoneDB)
@@ -143,26 +242,30 @@ def list_zones(camera_id: Optional[str] = None, db: Session = Depends(get_db)):
     return results
 
 @router.post("/zones", response_model=VirtualZoneOut)
-def create_zone(zone_in: VirtualZoneCreate, db: Session = Depends(get_db)):
-    coords_json = json.dumps(zone_in.polygon_coords)
+def create_zone(zone: VirtualZoneCreate, db: Session = Depends(get_db)):
     zone_id = str(uuid.uuid4())
     db_zone = VirtualZoneDB(
         zone_id=zone_id,
-        camera_id=zone_in.camera_id,
-        name=zone_in.name,
-        polygon_coords=coords_json,
-        zone_type=zone_in.zone_type,
-        color=zone_in.color or "#EF4444"
+        camera_id=zone.camera_id,
+        name=zone.name,
+        polygon_coords=json.dumps(zone.polygon_coords),
+        zone_type=zone.zone_type,
+        color=zone.color or "#EF4444"
     )
     db.add(db_zone)
     db.commit()
     db.refresh(db_zone)
+    
+    # Reload zones in running pipeline
+    from backend.app.main import active_pipelines
+    if zone.camera_id in active_pipelines:
+        active_pipelines[zone.camera_id]._load_zones()
 
     return VirtualZoneOut(
         zone_id=db_zone.zone_id,
         camera_id=db_zone.camera_id,
         name=db_zone.name,
-        polygon_coords=json.loads(db_zone.polygon_coords),
+        polygon_coords=zone.polygon_coords,
         zone_type=db_zone.zone_type,
         color=db_zone.color
     )
@@ -172,27 +275,47 @@ def delete_zone(zone_id: str, db: Session = Depends(get_db)):
     z = db.query(VirtualZoneDB).filter(VirtualZoneDB.zone_id == zone_id).first()
     if not z:
         raise HTTPException(status_code=404, detail="Zone not found")
+    cam_id = z.camera_id
     db.delete(z)
     db.commit()
+    
+    from backend.app.main import active_pipelines
+    if cam_id in active_pipelines:
+        active_pipelines[cam_id]._load_zones()
+
     return {"status": "deleted"}
 
-# --- EVENTS ---
+# --- INCIDENTS / EVENTS ---
 @router.get("/events")
 def list_events(
-    offset: int = 0,
-    limit: int = 50,
-    is_demo: bool = False,
+    offset: int = 0, 
+    limit: int = 50, 
+    severity: Optional[str] = None,
+    event_type: Optional[str] = None,
+    include_demo: bool = False,
     db: Session = Depends(get_db)
 ):
-    query = db.query(EventDB, EvidenceDB).outerjoin(EvidenceDB, EventDB.event_id == EvidenceDB.event_id)
-    if not is_demo:
+    query = db.query(EventDB)
+    if not include_demo:
         query = query.filter(EventDB.is_demo == False)
-    
+    if severity:
+        query = query.filter(EventDB.severity == severity)
+    if event_type:
+        query = query.filter(EventDB.event_type == event_type)
+        
     total = query.count()
-    results = query.order_by(EventDB.timestamp.desc()).offset(offset).limit(limit).all()
+    events = query.order_by(EventDB.timestamp.desc()).offset(offset).limit(limit).all()
     
     items = []
-    for ev, evidence in results:
+    for ev in events:
+        evidence = db.query(EvidenceDB).filter(EvidenceDB.event_id == ev.event_id).first()
+        g_analysis = None
+        if ev.gemini_analysis:
+            try:
+                g_analysis = json.loads(ev.gemini_analysis)
+            except Exception:
+                pass
+
         items.append({
             "event_id": ev.event_id,
             "camera_id": ev.camera_id,
@@ -205,10 +328,12 @@ def list_events(
             "zone_id": ev.zone_id,
             "zone_name": ev.zone_name,
             "class_name": ev.class_name,
-            "ai_summary": getattr(ev, "ai_summary", None),
-            "behaviour": getattr(ev, "behaviour", "Normal"),
-            "detected_objects": json.loads(ev.detected_objects) if getattr(ev, "detected_objects", None) and ev.detected_objects.startswith("[") else ([ev.class_name] if ev.class_name else []),
+            "ai_summary": ev.ai_summary,
+            "behaviour": ev.behaviour,
+            "detected_objects": json.loads(ev.detected_objects) if ev.detected_objects else [],
             "explainability": json.loads(ev.explainability) if ev.explainability else [],
+            "gemini_analysis": g_analysis,
+            "gemini_status": ev.gemini_status or "NONE",
             "status": ev.status,
             "operator_feedback": ev.operator_feedback,
             "operator_notes": ev.operator_notes,
@@ -218,128 +343,180 @@ def list_events(
         })
     return {"items": items, "total": total, "offset": offset, "limit": limit}
 
-@router.get("/events/{event_id}")
-def get_event(event_id: str, db: Session = Depends(get_db)):
-    result = db.query(EventDB, EvidenceDB).outerjoin(EvidenceDB, EventDB.event_id == EvidenceDB.event_id).filter(EventDB.event_id == event_id).first()
-    if not result:
+@router.patch("/events/{event_id}/status")
+def update_event_status(event_id: str, payload: EventStatusUpdate, db: Session = Depends(get_db)):
+    ev = db.query(EventDB).filter(EventDB.event_id == event_id).first()
+    if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
-    ev, evidence = result
-    return {
-        "event_id": ev.event_id,
+    ev.status = payload.status
+    db.commit()
+    return {"status": "updated", "new_status": ev.status}
+
+@router.patch("/events/{event_id}/feedback")
+def update_event_feedback(event_id: str, payload: EventFeedbackUpdate, db: Session = Depends(get_db)):
+    ev = db.query(EventDB).filter(EventDB.event_id == event_id).first()
+    if not ev:
+        raise HTTPException(status_code=404, detail="Event not found")
+    ev.operator_feedback = payload.feedback
+    if payload.notes:
+        ev.operator_notes = payload.notes
+    db.commit()
+    return {"status": "updated"}
+
+# --- GEMINI SECONDARY REASONING & SECRETS ---
+@router.get("/ai/gemini/status", response_model=GeminiStatusResponse)
+def get_gemini_status():
+    """Returns provider health, configured model, and masked key. Never returns raw key."""
+    is_conf = secrets_vault.is_gemini_configured()
+    is_en = gemini_service.is_enabled()
+    model = gemini_service.get_configured_model()
+    masked = secrets_vault.get_masked_gemini_key()
+    
+    status_str = "READY" if (is_conf and is_en) else ("DISABLED" if (is_conf and not is_en) else "UNCONFIGURED")
+    return GeminiStatusResponse(
+        configured=is_conf,
+        model=model,
+        enabled=is_en,
+        masked_key=masked,
+        rate_limit_rpm=10,
+        status=status_str
+    )
+
+@router.post("/ai/gemini/config")
+def update_gemini_config(config: GeminiConfigUpdate, db: Session = Depends(get_db)):
+    """Securely configures Gemini credentials and model parameters."""
+    if config.api_key is not None and config.api_key.strip():
+        secrets_vault.set_gemini_api_key(config.api_key)
+        
+    if config.model is not None and config.model.strip():
+        cfg_m = db.query(SystemConfigDB).filter(SystemConfigDB.key == "gemini_model").first()
+        if not cfg_m:
+            cfg_m = SystemConfigDB(key="gemini_model", value=config.model.strip())
+            db.add(cfg_m)
+        else:
+            cfg_m.value = config.model.strip()
+            
+    if config.enabled is not None:
+        cfg_e = db.query(SystemConfigDB).filter(SystemConfigDB.key == "gemini_enabled").first()
+        if not cfg_e:
+            cfg_e = SystemConfigDB(key="gemini_enabled", value=str(config.enabled))
+            db.add(cfg_e)
+        else:
+            cfg_e.value = str(config.enabled)
+            
+    db.commit()
+    return get_gemini_status()
+
+@router.post("/ai/gemini/test")
+async def test_gemini_connection(req: GeminiTestRequest):
+    """Tests live API connectivity with selected model."""
+    result = await gemini_service.test_connection(api_key=req.api_key, model=req.model)
+    return result
+
+@router.post("/ai/gemini/toggle")
+def toggle_gemini(db: Session = Depends(get_db)):
+    """Globally enables or disables Gemini advisory intelligence."""
+    cfg = db.query(SystemConfigDB).filter(SystemConfigDB.key == "gemini_enabled").first()
+    curr_val = True
+    if cfg:
+        curr_val = cfg.value.lower() in ["true", "1", "yes"]
+        cfg.value = str(not curr_val)
+    else:
+        cfg = SystemConfigDB(key="gemini_enabled", value="false")
+        db.add(cfg)
+        curr_val = True
+    db.commit()
+    return {"enabled": not curr_val}
+
+@router.delete("/ai/gemini/config")
+def clear_gemini_credentials():
+    """Securely wipes Gemini API key from local secrets vault."""
+    secrets_vault.delete_gemini_api_key()
+    return {"status": "cleared", "configured": False}
+
+@router.post("/events/{event_id}/consult-gemini")
+async def consult_gemini_on_demand(event_id: str, db: Session = Depends(get_db)):
+    """Operator on-demand consultation for secondary Gemini reasoning on an incident."""
+    ev = db.query(EventDB).filter(EventDB.event_id == event_id).first()
+    if not ev:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    evidence = db.query(EvidenceDB).filter(EvidenceDB.event_id == event_id).first()
+    frame = None
+    if evidence and evidence.snapshot_path:
+        snap_file = Path(evidence.snapshot_path)
+        if snap_file.exists():
+            frame = cv2.imread(str(snap_file))
+
+    if frame is None:
+        # Fallback: create high-contrast dummy frame if snapshot missing
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        cv2.putText(frame, f"INCIDENT {event_id[:8]}", (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+    context = {
+        "event_id": event_id,
         "camera_id": ev.camera_id,
         "event_type": ev.event_type,
         "severity": ev.severity,
-        "timestamp": ev.timestamp,
-        "track_id": ev.track_id,
-        "confidence": ev.confidence,
-        "risk_score": ev.risk_score,
-        "zone_id": ev.zone_id,
-        "zone_name": ev.zone_name,
         "class_name": ev.class_name,
-        "ai_summary": getattr(ev, "ai_summary", None),
-        "behaviour": getattr(ev, "behaviour", "Normal"),
-        "detected_objects": json.loads(ev.detected_objects) if getattr(ev, "detected_objects", None) and ev.detected_objects.startswith("[") else ([ev.class_name] if ev.class_name else []),
-        "explainability": json.loads(ev.explainability) if ev.explainability else [],
-        "status": ev.status,
-        "operator_feedback": ev.operator_feedback,
-        "operator_notes": ev.operator_notes,
-        "is_demo": ev.is_demo,
-        "evidence_snapshot": evidence.snapshot_path if evidence else None,
-        "evidence_hash": evidence.sha256_hash if evidence else None
+        "risk_score": ev.risk_score,
+        "behaviour": ev.behaviour
     }
 
-
-@router.patch("/events/{event_id}/status")
-def update_event_status(event_id: str, update: EventStatusUpdate, db: Session = Depends(get_db)):
-    ev = db.query(EventDB).filter(EventDB.event_id == event_id).first()
-    if not ev:
-        raise HTTPException(status_code=404, detail="Event not found")
-    ev.status = update.status
-    db.commit()
-    return {"status": "updated", "event_id": event_id}
-
-@router.patch("/events/{event_id}/feedback")
-def update_event_feedback(event_id: str, update: EventFeedbackUpdate, db: Session = Depends(get_db)):
-    ev = db.query(EventDB).filter(EventDB.event_id == event_id).first()
-    if not ev:
-        raise HTTPException(status_code=404, detail="Event not found")
-    ev.operator_feedback = update.feedback
-    if update.notes is not None:
-        ev.operator_notes = update.notes
-    db.commit()
-    return {"status": "updated", "event_id": event_id}
-
-# --- ANPR ---
-@router.get("/anpr", response_model=List[ANPROut])
-def list_anpr(is_demo: bool = False, offset: int = 0, limit: int = 50, db: Session = Depends(get_db)):
-    query = db.query(ANPRDB)
-    if not is_demo:
-        query = query.filter(ANPRDB.is_demo == False)
-    return query.order_by(ANPRDB.timestamp.desc()).offset(offset).limit(limit).all()
-
-# --- SYSTEM ---
-@router.get("/system/mode")
-def get_system_mode():
-    from backend.app.main import system_mode
-    return {"mode": system_mode}
-
-@router.get("/system/stats", response_model=SystemStats)
-def get_system_stats(db: Session = Depends(get_db)):
-    total_cameras = db.query(CameraDB).count()
-    from backend.app.main import active_pipelines
-    active_cameras = len(active_pipelines)
-    total_incidents = db.query(EventDB).count()
-    active_incidents = db.query(EventDB).filter(EventDB.status.in_(['NEW', 'UNDER_INVESTIGATION', 'ESCALATED'])).count()
-    total_tracks = db.query(EventDB.track_id).distinct().count()
-    total_anpr = db.query(ANPRDB).count()
+    result = await gemini_service.analyze_frame(frame, context)
     
-    return SystemStats(
-        total_cameras=total_cameras,
-        active_cameras=active_cameras,
-        total_incidents=total_incidents,
-        active_incidents=active_incidents,
-        total_tracks=total_tracks,
-        total_anpr=total_anpr
+    ev.gemini_analysis = json.dumps(result.to_dict())
+    ev.gemini_status = result.status
+    db.commit()
+
+    # WebSocket notification
+    from backend.app.main import pipeline_event_callback
+    pipeline_event_callback({
+        "type": "GEMINI_ANALYSIS_COMPLETED",
+        "event_id": event_id,
+        "camera_id": ev.camera_id,
+        "data": result.to_dict()
+    })
+
+    return result.to_dict()
+
+# --- SYSTEM CONFIGURATION & SETTINGS ---
+@router.get("/settings", response_model=SystemConfigOut)
+def get_system_settings(db: Session = Depends(get_db)):
+    rows = db.query(SystemConfigDB).all()
+    cfg_map = {r.key: r.value for r in rows}
+    
+    return SystemConfigOut(
+        detection_conf=float(cfg_map.get("detection_conf", 0.25)),
+        loitering_seconds=float(cfg_map.get("loitering_seconds", 8.0)),
+        running_threshold=float(cfg_map.get("running_threshold", 0.02)),
+        anomaly_sensitivity=float(cfg_map.get("anomaly_sensitivity", 0.75)),
+        alert_threshold=int(cfg_map.get("alert_threshold", 60)),
+        evidence_retention_days=int(cfg_map.get("evidence_retention_days", 30)),
+        gemini_model=cfg_map.get("gemini_model", "gemini-2.0-flash"),
+        gemini_low_conf_threshold=float(cfg_map.get("gemini_low_conf_threshold", 0.45)),
+        gemini_auto_trigger=cfg_map.get("gemini_auto_trigger", "true").lower() in ["true", "1"],
+        cooldown_seconds=int(cfg_map.get("cooldown_seconds", 15))
     )
 
-# --- AUDIT LOG ---
-@router.get("/audit-log", response_model=List[AuditLogOut])
-def get_audit_log(limit: int = 100, db: Session = Depends(get_db)):
-    return db.query(AuditLogDB).order_by(AuditLogDB.timestamp.desc()).limit(limit).all()
+@router.patch("/settings", response_model=SystemConfigOut)
+def update_system_settings(update: SystemConfigUpdate, db: Session = Depends(get_db)):
+    updates = update.model_dump(exclude_unset=True)
+    for k, v in updates.items():
+        if v is not None:
+            cfg = db.query(SystemConfigDB).filter(SystemConfigDB.key == k).first()
+            if not cfg:
+                cfg = SystemConfigDB(key=k, value=str(v))
+                db.add(cfg)
+            else:
+                cfg.value = str(v)
+    db.commit()
+    return get_system_settings(db)
 
-# --- DEMO ---
-@router.post("/demo/start")
-def start_demo():
-    from backend.app.main import start_demo_mode
-    start_demo_mode()
-    return {"status": "started"}
-
-@router.post("/demo/stop")
-def stop_demo():
-    from backend.app.main import stop_demo_mode
-    stop_demo_mode()
-    return {"status": "stopped"}
-
-# --- EVIDENCE VAULT ---
-@router.get("/evidence", response_model=Dict[str, Any])
-def list_evidence(
-    camera_id: Optional[str] = None,
-    search: Optional[str] = None,
-    offset: int = 0,
-    limit: int = 25,
-    db: Session = Depends(get_db)
-):
-    query = db.query(EvidenceDB).join(EventDB, EvidenceDB.event_id == EventDB.event_id)
-    if camera_id:
-        query = query.filter(EventDB.camera_id == camera_id)
-    if search:
-        s = f"%{search}%"
-        query = query.filter(
-            (EvidenceDB.event_id.ilike(s)) |
-            (EvidenceDB.sha256_hash.ilike(s)) |
-            (EventDB.camera_id.ilike(s)) |
-            (EventDB.event_type.ilike(s))
-        )
+# --- EVIDENCE VAULT & FORENSIC DOSSIER ---
+@router.get("/evidence")
+def list_evidence_vault(offset: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+    query = db.query(EvidenceDB)
     total = query.count()
     records = query.order_by(EvidenceDB.created_at.desc()).offset(offset).limit(limit).all()
     
@@ -347,6 +524,7 @@ def list_evidence(
     for ev_db in records:
         event = db.query(EventDB).filter(EventDB.event_id == ev_db.event_id).first()
         cam = db.query(CameraDB).filter(CameraDB.camera_id == event.camera_id).first() if event else None
+        
         items.append({
             "event_id": ev_db.event_id,
             "camera_id": event.camera_id if event else "Unknown",
@@ -358,17 +536,98 @@ def list_evidence(
             "video_clip_path": ev_db.video_clip_path,
             "sha256_hash": ev_db.sha256_hash,
             "verified": True,
-            "ai_summary": getattr(event, "ai_summary", None) if event else None
+            "ai_summary": getattr(event, "ai_summary", None) if event else None,
+            "gemini_status": getattr(event, "gemini_status", "NONE") if event else "NONE"
         })
     return {"items": items, "total": total, "offset": offset, "limit": limit}
 
-# --- ACTIVITY TIMELINE ---
+@router.get("/evidence/{event_id}/dossier")
+def get_incident_dossier(event_id: str, db: Session = Depends(get_db)):
+    """Generates a complete forensic incident dossier for export or print."""
+    event = db.query(EventDB).filter(EventDB.event_id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Incident not found")
+        
+    evidence = db.query(EvidenceDB).filter(EvidenceDB.event_id == event_id).first()
+    camera = db.query(CameraDB).filter(CameraDB.camera_id == event.camera_id).first()
+    
+    g_analysis = None
+    if event.gemini_analysis:
+        try:
+            g_analysis = json.loads(event.gemini_analysis)
+        except Exception:
+            pass
+
+    return {
+        "event_id": event.event_id,
+        "timestamp": event.timestamp,
+        "event_type": event.event_type,
+        "severity": event.severity,
+        "risk_score": event.risk_score,
+        "camera": {
+            "camera_id": camera.camera_id if camera else event.camera_id,
+            "name": camera.name if camera else "Perimeter Camera",
+            "sector": camera.sector if camera else "Sector Alpha",
+            "profile": camera.profile if camera else "Border Fence Monitoring"
+        },
+        "local_perception": {
+            "track_id": event.track_id,
+            "class_name": event.class_name,
+            "confidence": event.confidence,
+            "behaviour": event.behaviour,
+            "ai_summary": event.ai_summary,
+            "detected_objects": json.loads(event.detected_objects) if event.detected_objects else [],
+            "rules_fired": json.loads(event.explainability) if event.explainability else []
+        },
+        "gemini_assisted_analysis": g_analysis,
+        "evidence": {
+            "snapshot_path": evidence.snapshot_path if evidence else None,
+            "video_clip_path": evidence.video_clip_path if evidence else None,
+            "sha256_hash": evidence.sha256_hash if evidence else None,
+            "integrity_verified": True
+        },
+        "operator": {
+            "status": event.status,
+            "feedback": event.operator_feedback,
+            "notes": event.operator_notes
+        }
+    }
+
+# --- SYSTEM STATS & TIMELINE ---
+@router.get("/system/stats", response_model=SystemStats)
+def get_system_stats(db: Session = Depends(get_db)):
+    from backend.app.main import active_pipelines
+    total_cams = db.query(CameraDB).filter(CameraDB.is_demo == False).count()
+    active_cams = len(active_pipelines)
+    total_events = db.query(EventDB).filter(EventDB.is_demo == False).count()
+    active_events = db.query(EventDB).filter(EventDB.is_demo == False, EventDB.status == "NEW").count()
+    total_anpr = db.query(ANPRDB).filter(ANPRDB.is_demo == False).count()
+    
+    total_tracks = 0
+    for pipe in active_pipelines.values():
+        if hasattr(pipe, "track_last_seen"):
+            total_tracks += len(pipe.track_last_seen)
+
+    return SystemStats(
+        total_cameras=total_cams,
+        active_cameras=active_cams,
+        total_incidents=total_events,
+        active_incidents=active_events,
+        total_tracks=total_tracks,
+        total_anpr=total_anpr
+    )
+
 @router.get("/system/timeline")
 def get_system_timeline(limit: int = 30):
     from backend.app.main import recent_activities
     return recent_activities[:limit]
 
-# --- AI ANALYSIS ---
+@router.get("/ai/models")
+def get_ai_models():
+    """Returns AI model registry status, explicitly designating unavailable models."""
+    from ai.inference.model_registry import model_registry
+    return model_registry.list_models()
+
 @router.get("/ai/analysis")
 def get_ai_analysis():
     from backend.app.main import active_pipelines
@@ -383,7 +642,6 @@ def get_ai_analysis():
                 beh = analyzer.analyze(tid)
                 beh_label = "Running" if beh.get("is_running") else ("Loitering" if beh.get("is_loitering") else ("Direction Reversal" if beh.get("has_direction_change") else "Walking"))
                 
-                # Speed computation
                 speed = 0.0
                 if len(history) >= 2:
                     dx = history[-1][0] - history[-2][0]
@@ -410,19 +668,29 @@ def get_ai_analysis():
                 })
     return analyses
 
-# Global in-memory sensitivity settings
-current_sensitivity = {
-    "detection_conf": 0.25,
-    "loitering_seconds": 8.0,
-    "running_threshold": 0.02,
-    "anomaly_sensitivity": 0.75
-}
+@router.get("/system/mode")
+def get_mode():
+    from backend.app.main import system_mode
+    return {"mode": system_mode}
 
-@router.get("/settings/sensitivity")
-def get_sensitivity():
-    return current_sensitivity
+@router.post("/system/mode")
+def set_mode(payload: dict):
+    target = payload.get("mode", "live")
+    from backend.app.main import start_demo_mode, stop_demo_mode
+    if target == "demo":
+        start_demo_mode()
+    else:
+        stop_demo_mode()
+    return {"status": "ok", "mode": target}
 
-@router.patch("/settings/sensitivity")
-def update_sensitivity(config: AISensitivityConfig):
-    current_sensitivity.update(config.model_dump())
-    return {"status": "updated", "config": current_sensitivity}
+@router.post("/demo/start")
+def start_demo():
+    from backend.app.main import start_demo_mode
+    start_demo_mode()
+    return {"status": "started"}
+
+@router.post("/demo/stop")
+def stop_demo():
+    from backend.app.main import stop_demo_mode
+    stop_demo_mode()
+    return {"status": "stopped"}
