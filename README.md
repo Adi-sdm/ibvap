@@ -1,179 +1,194 @@
-# IBVAP - Intelligent Border Video Analytics Platform
+# IBVAP — Intelligent Border Video Analytics Platform
 
 [![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/Frontend-React%2018%20%2B%20Vite-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![Leaflet](https://img.shields.io/badge/GIS-Leaflet%201.9-199900?logo=leaflet&logoColor=white)](https://leafletjs.com/)
 [![Tailwind CSS](https://img.shields.io/badge/Styles-Tailwind%20CSS-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![OpenCV](https://img.shields.io/badge/Computer%20Vision-OpenCV-5C3EE8?logo=opencv&logoColor=white)](https://opencv.org/)
-[![YOLOv8](https://img.shields.io/badge/AI%20Inference-YOLOv8n-00FFFF)](https://github.com/ultralytics/ultralytics)
+[![YOLOv8](https://img.shields.io/badge/Edge%20AI-YOLOv8n-00FFFF)](https://github.com/ultralytics/ultralytics)
+[![Gemini](https://img.shields.io/badge/Advisory%20AI-Google%20Gemini%20Vision-8E75C2?logo=google&logoColor=white)](https://deepmind.google/technologies/gemini/)
 [![Docker](https://img.shields.io/badge/Deployment-Docker%20%26%20Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Hackathon](https://img.shields.io/badge/Smart%20India%20Hackathon-2026%20(SIH26187)-orange)](#)
 
-> **"Do not replace existing CCTV infrastructure -- augment it with explainable, offline edge intelligence."**
+> **"Do not replace existing CCTV infrastructure — augment it with explainable, hybrid edge intelligence."**
 
-IBVAP is a software-defined, 100% air-gapped Edge AI surveillance platform engineered for border defense, perimeter security, and checkpoint monitoring. It turns standard RTSP/IP cameras into an automated perimeter security system capable of persistent tracking, directional intrusion detection, explainable risk scoring, and cryptographic evidence verification -- with zero cloud dependency.
+**IBVAP (Intelligent Border Video Analytics Platform)** is a software-defined, defense-grade Edge AI surveillance platform designed for national border security, critical infrastructure protection, and perimeter checkpoints. It converts standard RTSP/IP cameras into an automated, explainable perimeter monitoring system featuring **Dual AI Perception (100% Offline Edge YOLOv8 + Multimodal Gemini Advisory)**, **Vehicle Watchlist Intelligence**, **Tactical GIS Geospatial Mapping**, **Ray-Casting Geofences**, and **Cryptographic SHA-256 Evidence Auditing**.
 
 ---
 
-## System Architecture
+## 🏛️ System Architecture
+
+IBVAP operates on a **Dual AI Hybrid Tier Architecture**: an ultra-low-latency on-premises edge pipeline handles continuous real-time tracking and threat heuristics, coupled with an asynchronous secondary multimodal reasoning layer for human-in-the-loop advisory verification.
 
 ```
-[ Existing Border Cameras ] (RTSP IP Stream / MP4 Recording / USB Webcam)
-            │
-            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  IBVAP Ingestion Engine                     │
-│    (OpenCV VideoCapture — Unified I/O across all sources)   │
-└─────────────────────────────┬───────────────────────────────┘
-                              │
-              ┌───────────────┴───────────────┐
-              ▼                               ▼
-  ┌───────────────────────┐       ┌───────────────────────┐
-  │ Environmental Sensor  │       │ Camera Health Monitor │
-  │ • Mean Luminance      │       │ • FPS Telemetry       │
-  │ • Contrast / Haze     │       │ • Freeze Detection    │
-  │ • Day/Night Detector  │       │ • Disconnect Watchdog │
-  └───────────┬───────────┘       └───────────┬───────────┘
-              │                               │
-              ▼                               │
-  ┌───────────────────────────────────────┐   │
-  │ YOLOv8 Object Detector                │   │
-  │ • Person, Vehicle, Bicycle, Truck     │   │
-  └───────────────────┬───────────────────┘   │
-                      │                       │
-                      ▼                       │
-  ┌───────────────────────────────────────┐   │
-  │ ByteTrack Motion Tracker              │   │
-  │ • Persistent Multi-Frame IDs          │   │
-  │ • Ground Contact Foot-Point Mapping   │   │
-  └───────────────────┬───────────────────┘   │
-                      │                       │
-                      ▼                       │
-  ┌───────────────────────────────────────┐   │
-  │ Virtual Zone Engine                   │   │
-  │ • Ray-Casting Point-in-Polygon        │   │
-  │ • Directional Crossing (Entry/Exit)   │   │
-  │ • Loitering Duration Escalation       │   │
-  └───────────────────┬───────────────────┘   │
-                      │                       │
-                      ▼                       │
-  ┌───────────────────────────────────────┐   │
-  │ Offline ANPR Engine                   │   │
-  │ • Vehicle Localization & Crop         │   │
-  │ • OpenCV CLAHE / Bilateral Filter     │   │
-  │ • Offline OCR with Confidence Flag    │   │
-  └───────────────────┬───────────────────┘   │
-                      │                       │
-                      ▼                       │
-  ┌───────────────────────────────────────┐   │
-  │ Explainable Risk Engine (0-100)       │   │
-  │ • Additive Heuristics Rule Audit      │   │
-  │ • Multi-Signal Spatio-Temporal Fusion │   │
-  └───────────────────┬───────────────────┘   │
-                      │                       │
-                      ▼                       │
-  ┌───────────────────────────────────────┐   │
-  │ Cryptographic Evidence Vault          │   │
-  │ • Auto JPEG Snapshot + 5s MP4 Clip    │   │
-  │ • SHA-256 Tamper-Proof Checksum       │   │
-  └───────────────────┬───────────────────┘   │
-                      │                       │
-                      ▼                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│          FastAPI Backend & Real-Time WebSocket Hub          │
-│ • SQLite Database (`ibvap.db`)                              │
-│ • REST Endpoints (`/api/cameras`, `/api/events`, etc.)      │
-│ • Low-Latency MJPEG Video Stream Multiplexer                │
-└─────────────────────────────┬───────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│          Tactical Operator Command Center (React)           │
-│ • Overview • Live Monitoring (2x2 Grid / Single View)       │
-│ • Incident Replay • Virtual Zone Drawer • ANPR Feed         │
-│ • Camera Health Telemetry • Threat Heatmap Analytics        │
-└─────────────────────────────────────────────────────────────┘
+                  ┌─────────────────────────────────────────────────────────┐
+                  │    SURVEILLANCE CAMERAS (RTSP / USB Webcams / MP4s)     │
+                  └───────────────────────────┬─────────────────────────────┘
+                                              │
+                                              ▼
+┌───────────────────────────────────────────────────────────────────────────────────────────┐
+│                          EDGE INGESTION & PIPELINE ENGINE                                 │
+│  • OpenCV VideoCapture Hardware Multiplexer                                               │
+│  • Isolated Detector Instances per Stream (Zero Cross-Camera ByteTrack Collision)         │
+│  • Watchdog Telemetry: FPS Monitoring, Freeze Detection, Auto-Reconnect Backoff           │
+└─────────────────────────────────────────────┬─────────────────────────────────────────────┘
+                                              │
+         ┌────────────────────────────────────┼────────────────────────────────────┐
+         ▼                                    ▼                                    ▼
+┌─────────────────────────┐      ┌─────────────────────────┐      ┌─────────────────────────┐
+│   EDGE YOLOv8 TRACKER   │      │  ENVIRONMENTAL SENSORS  │      │   OPENCV HUD OVERLAY    │
+│ • ByteTrack ID Locking  │      │ • Photometric Lux Sensor│      │ • Motion Breadcrumbs    │
+│ • Ground Contact Points │      │ • Day/Night Detector    │      │ • Foot Contact Anchors  │
+│ • Small Arms Heuristics │      │ • Sensor Occlusion Check│      │ • Zero-Light Warning    │
+└────────────┬────────────┘      └────────────┬────────────┘      └────────────┬────────────┘
+             │                                │                                │
+             └────────────────────────────────┼────────────────────────────────┘
+                                              │
+                                              ▼
+┌───────────────────────────────────────────────────────────────────────────────────────────┐
+│                             SPATIAL & BEHAVIORAL ANALYTICS                                │
+│ • Ray-Casting Virtual Zones: Directional Crossing (INTRUSION_ENTRY / EXIT / LOITERING)   │
+│ • Vehicle Intelligence: ANPR OCR (CLAHE + Bilateral Filtering) + Hotlist Watchlist Engine │
+│ • Cross-Camera Predictive Handoff: Inter-Sector Speed & Transit Route Estimation          │
+│ • Additive Heuristic Risk Engine: Transparent, audited 0–100 threat score accumulation    │
+└─────────────────────────────────────────────┬─────────────────────────────────────────────┘
+                                              │
+                      ┌───────────────────────┴───────────────────────┐
+                      ▼                                               ▼
+┌───────────────────────────────────────────┐   ┌───────────────────────────────────────────┐
+│     CRYPTOGRAPHIC EVIDENCE VAULT          │   │      MULTIMODAL GEMINI ADVISORY           │
+│ • Auto JPEG Snapshot + 5s MP4 Clip        │   │ • Asynchronous Secondary Verification     │
+│ • SHA-256 Tamper-Proof Checksum Hashing   │   │ • SecretsVault API Key Protection         │
+│ • Exportable Forensic Incident Dossiers   │   │ • Quota Rate Limiting & Offline Fallback  │
+└─────────────────────┬─────────────────────┘   └─────────────────────┬─────────────────────┘
+                      │                                               │
+                      └───────────────────────┬───────────────────────┘
+                                              │
+                                              ▼
+┌───────────────────────────────────────────────────────────────────────────────────────────┐
+│                          FASTAPI REAL-TIME APPLICATION HUB                                │
+│ • SQLite Database (`ibvap.db`) with Automatic Safe Schema Migrations                      │
+│ • Tamper-Evident Audit Logging (`AuditLogDB`) with Supervisor Justification Tracking      │
+│ • Asynchronous WebSocket Broadcasting (`/ws`) & Low-Latency MJPEG Video Stream Server    │
+└─────────────────────────────────────────────┬─────────────────────────────────────────────┘
+                                              │
+                                              ▼
+┌───────────────────────────────────────────────────────────────────────────────────────────┐
+│                      TACTICAL OPERATOR DASHBOARD (React 18 + Vite)                        │
+│ • Glass Command Theme • Leaflet GIS Map with Camera FOV Cones & Heading Vectors           │
+│ • Multi-Grid & Single-View Streams • Vehicle Intel Hub • Dual AI Comparison Cards        │
+│ • Privileged Command Modal • Virtual Zone Polygon Drawer • Incident Replay Scrubber      │
+└───────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Key Capabilities
+## ⚡ Core Algorithms & Innovations
 
-- **Unified Ingestion Pipeline**: OpenCV `VideoCapture` pipeline treats RTSP streams, recorded MP4 surveillance footage, and USB webcams identically without special plugins.
-- **Persistent Multi-Target Tracking**: Integrated ByteTrack algorithm maintains persistent `track_id` values across occlusions and motion blurs using ground-contact foot-point estimation.
-- **Direction-Aware Virtual Zones**: Ray-casting point-in-polygon engine distinguishes outside-to-inside `INTRUSION_ENTRY`, inside-to-outside `ZONE_EXIT`, and stationary `LOITERING` duration.
-- **Explainable 0-100 Risk Engine**: Additive heuristic model with a fully audited rule chain. Every alert explicitly shows why points were added (e.g., `Target in Restricted Zone (+35)`, `Low-light nocturnal movement (+15)`).
-- **Multi-Signal Event Fusion**: Collapses rapid, fragmented detections of the same physical target into a single evolving incident record with a chronological timeline.
-- **Cryptographic Evidence Vault**: Automatically captures high-resolution JPEG snapshots and 5-second MP4 video clips, hashing all artifacts with **SHA-256** checksums for tamper-proof legal verification.
-- **Offline Automatic Number Plate Recognition (ANPR)**: Localizes vehicles, crops plate regions, enhances contrast via OpenCV CLAHE and bilateral filtering, and performs offline OCR with automatic human-in-the-loop flagging (`Verification Required`) for low-confidence reads.
-- **Camera Health Watchdog**: Monitors FPS telemetry, latency, video freeze states, and RTSP stream drops, automatically attempting reconnection without system crashes.
-- **Tactical Operator Dashboard**: Modern, high-contrast dark-mode interface built with React 18, Vite, and Tailwind CSS.
-- **Zero Cloud AI Dependency**: 100% on-premises execution -- no cloud API dependencies, ensuring strict defense-grade data sovereignty.
+### 1. Dual AI Hybrid Perception
+- **Primary Tier (Edge)**: Runs 100% on-premises using YOLOv8n and ByteTrack. Delivers zero-cloud, real-time perimeter defense at 20+ FPS on edge hardware.
+- **Secondary Tier (Multimodal AI Advisory)**: Integrates Google Gemini Vision via `GeminiVisionProvider`. Performs secondary semantic validation of high-risk events, evaluating nuanced physical context without blocking real-time alerts.
+- **Privacy & Secrets Protection**: The `SecretsVault` manages credentials securely using local restricted stores and environment overrides, never exposing plaintext keys via REST APIs.
+
+### 2. Isolated Pipeline Architecture & Surveillance Profiles
+- **Stream Isolation**: Each active camera pipeline runs an isolated YOLOv8 detector instance, preventing multi-stream ByteTrack track collisions and state contamination.
+- **Surveillance Profiles**: Pre-configured operational presets dynamically adapt detection thresholds, target classes, and heuristic weights:
+  - **Border Fence Monitoring**: Zero-tolerance perimeter barrier intrusion, wire-crossing, and climbing detection.
+  - **Checkpoint Monitoring**: Personnel lane control, vehicle queue inspection, and automated plate recognition.
+  - **Vehicle Inspection**: High-precision ANPR, undercarriage scanning, and vehicle attribute audits.
+  - **Sensitive Sector**: High-sensitivity asset zone tracking with strict loitering escalations.
+  - **Custom Profile**: User-defined sensitivity presets, alert thresholds (0–100), and module toggles.
+
+### 3. Vehicle Intelligence & Watchlist Hotlist Engine
+- **Automated Plate Verification**: Matches detected plates against `AuthorizedVehicleDB`.
+- **Attribute Discrepancy Detection**: Compares observed physical vehicle attributes against registered records (e.g., detecting a red SUV displaying a plate registered to a white sedan triggers an instant `ATTRIBUTE_MISMATCH` critical alert).
+- **Watchlist & Stolen Intercepts**: Flags high-priority hotlist targets with immediate automated supervisor alerts.
+- **Cross-Camera Handoff Correlation**: Estimates transit velocity and predicts next probable camera sectors for fleeing targets.
+
+### 4. Ray-Casting Virtual Zones & Directional Heuristics
+- **Ray-Casting Point-in-Polygon**: Evaluates ground-contact foot points (`x_center, y_max`) relative to arbitrary multi-vertex polygons.
+- **Directional State Machine**: Tracks state transitions between frames to distinguish outside-to-inside `INTRUSION_ENTRY`, inside-to-outside `ZONE_EXIT`, and stationary `LOITERING`.
+
+### 5. Tactical OpenCV HUD Frame Annotator
+- High-performance HUD overlay rendering bounding boxes, track IDs, speed estimations, confidence scores, and historical movement breadcrumbs.
+- **Zero-Light Shutter Occlusion Warning**: Detects physical lens covers or closed privacy shutters (`mean_pixel < 3.0`), rendering a prominent warning badge: `HARDWARE ACTIVE - ZERO LIGHT DETECTED`.
+- **Interactive HUD Controls**: Floating on-stream widget (`OverlayControls`) allowing operators to toggle labels, confidence, tracks, zones, and debug metrics dynamically.
+
+### 6. Tactical GIS Geospatial Mapping
+- Interactive Leaflet mapping engine (`GISMap`) displaying camera positions, sector lines, and live threat markers.
+- Renders directional heading vectors (0–360°), field-of-view (FOV) sector cones, and effective detection range radii for complete situational awareness.
+
+### 7. Supervisor Authorization & Privileged Controls
+- `PrivilegedActionModal` gates critical operational actions (e.g., deleting cameras, clearing logs, toggling AI bypasses).
+- Requires supervisor passcode authentication and mandatory operational justification, permanently recorded in the tamper-evident audit trail (`AuditLogDB`).
+
+### 8. Cryptographic Evidence Chain-of-Custody
+- High-risk incidents trigger automated capture of raw JPEG snapshots and 5-second MP4 video clips.
+- Every artifact is cryptographically hashed with **SHA-256** checksums, bundled into downloadable Forensic Incident Dossiers for legal evidence integrity.
 
 ---
 
-## Quick Start (Windows)
+## 📋 Surveillance Operational Profiles
 
-### Option 1: One-Click Automated Launcher
-Simply double-click or run:
+| Profile Preset | Target Classes | Key Modules Enabled | Default Threshold |
+| :--- | :--- | :--- | :--- |
+| **Border Fence Monitoring** | Person, Backpack, Handbag, Suitcase | Intrusion, Loitering, Direction, Day/Night | 60 / 100 |
+| **Checkpoint Monitoring** | Person, Car, Motorcycle, Bus, Truck | Intrusion, Direction, ANPR, Watchlist | 50 / 100 |
+| **Vehicle Inspection** | Car, Motorcycle, Bus, Truck | ANPR, Attribute Verification, Handoff | 45 / 100 |
+| **Sensitive Sector** | Person, Vehicle, Drone, Animals | All Modules + High Sensitivity | 40 / 100 |
+| **Custom** | Fully configurable | Operator-selected modules | 0–100 Slider |
+
+---
+
+## 🚀 Quick Start Guide
+
+### Option 1: One-Click Automated Launcher (Windows)
 ```cmd
 installer\run_all.bat
 ```
-This launcher automatically:
-1. Starts the FastAPI backend & AI engine on port `8000`.
-2. Starts the Vite React dashboard on port `3000`.
-3. Opens your default web browser to `http://localhost:3000`.
+Starts backend, frontend, and opens `http://localhost:3000`.
 
 ---
 
 ### Option 2: Manual Setup
 
-#### 1. Backend & AI Environment
+#### 1. Backend & AI Engine
 ```cmd
 # Create and activate virtual environment
 python -m venv .venv
 .venv\Scripts\activate
 
-# Install Python dependencies
+# Install dependencies
 pip install -r backend\requirements.txt
+
+# Launch FastAPI backend
+python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
 ```
 
-#### 2. Frontend Dashboard
+#### 2. Tactical React Dashboard
 ```cmd
 cd frontend
 npm install
-npm run build
-```
-
-#### 3. Run Backend & Frontend
-In Terminal 1:
-```cmd
-python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
-```
-In Terminal 2:
-```cmd
-cd frontend
 npm run dev -- --host 0.0.0.0
 ```
 Open your browser at `http://localhost:3000`.
 
 ---
 
-### Option 3: Docker Deployment
-
-Deploy the platform in isolated containers:
+### Option 3: Docker Container Deployment
 ```bash
 cd docker
 docker-compose up -d --build
 ```
-The backend service will be exposed at `http://localhost:8000`.
+Access backend API documentation at `http://localhost:8000/docs`.
 
 ---
 
-## Verification & Compliance Testing
+## 🧪 Comprehensive Verification Suite
 
-Run the end-to-end automated verification suite:
+Run the master automated verification suite covering all 7 core subsystems:
 ```cmd
 python tests/test_all_scenarios.py
 ```
@@ -182,18 +197,25 @@ Or run the dedicated Windows test runner:
 installer\run_tests.bat
 ```
 
-### Verified Test Suites:
-| Test Suite | File | What It Validates |
+### Verified Test Matrix:
+| Test Suite | File | Subsystem Validated |
 | :--- | :--- | :--- |
-| **Core Services** | `tests/test_core_services.py` | Additive risk scoring, explainability strings, spatio-temporal fusion, SHA-256 evidence hashing |
-| **Virtual Zones** | `tests/test_zones.py` | Ray-casting point-in-polygon, directional crossing (entry/exit), loitering escalation |
-| **Offline ANPR** | `tests/test_anpr.py` | Plate format validation (Indian license plate patterns) and confidence threshold flagging |
+| **Core Services** | `tests/test_core_services.py` | Additive risk scoring, explainable rules, spatio-temporal event fusion, SHA-256 evidence hashing |
+| **Virtual Zones** | `tests/test_zones.py` | Ray-casting point-in-polygon, boundary crossing (entry/exit), loitering escalation |
+| **Offline ANPR** | `tests/test_anpr.py` | License plate regex validation and low-confidence human-in-the-loop flagging |
 | **Backend REST API** | `tests/test_backend_api.py` | Camera CRUD, zone management, event pagination, and demo mode switching |
-| **End-to-End Pipeline** | `tests/test_end_to_end.py` | Real video frame ingestion, YOLOv8 detection, zone crossing, and SQLite event persistence |
+| **End-to-End Surveillance** | `tests/test_end_to_end.py` | Real video frame ingestion, YOLOv8 inference, zone crossing, and SQLite audit logging |
+| **Enterprise Features** | `tests/test_enterprise_features.py` | Secrets vault masking, surveillance profiles catalog, HUD annotator, and system settings |
+| **Vehicle Intelligence** | `tests/test_vehicle_intel.py` | Authorized vehicle verification, attribute mismatch alerts, watchlist hotlist, and handoff prediction |
+
+### Browser UI Automated Tests (Puppeteer):
+- `node frontend/test_settings_browser.mjs` — Automated browser test for platform settings.
+- `node frontend/test_ai_analysis_browser.mjs` — Automated browser test for AI analysis & HUD controls.
+- `node frontend/test_gis_browser.mjs` — Automated browser test for Leaflet GIS map initialization.
 
 ---
 
-## Repository Structure
+## 📂 Repository Structure
 
 ```
 ibvap/
@@ -201,46 +223,48 @@ ibvap/
 │   ├── anpr/                        # Offline ANPR engine with CLAHE & OCR
 │   ├── behaviour/                   # Camera health watchdog & Day/Night lux assessment
 │   ├── detection/                   # Direct model inference & evaluation scripts
-│   ├── inference/                   # YOLOv8 pipeline, ByteTrack tracker, small arms heuristics
+│   ├── inference/                   # YOLOv8 pipeline, ByteTrack tracker, HUD annotator
 │   └── zones/                       # Ray-casting point-in-polygon & directional crossing
-├── backend/                         # FastAPI Backend & Business Logic
+├── backend/                         # FastAPI Backend & Persistence Layer
 │   ├── app/
-│   │   ├── api/                     # REST endpoints (cameras, zones, events, health, stream)
-│   │   ├── database/                # SQLAlchemy models, SQLite engine & sessions
-│   │   ├── models/                  # Pydantic request/response validation schemas
-│   │   └── services/                # Risk engine, event fusion, evidence vault, audit logging
-│   ├── requirements.txt             # Python backend dependencies
-│   └── run_backend.py               # Backend CLI runner
-├── database/                        # Database schemas & cryptographic evidence vault
+│   │   ├── api/                     # REST endpoints (cameras, zones, events, GIS, AI, vehicles)
+│   │   ├── database/                # SQLAlchemy ORM models, session & safe migrations
+│   │   ├── models/                  # Pydantic validation schemas
+│   │   └── services/                # Risk engine, event fusion, Gemini vision, vehicle intel
+│   ├── requirements.txt             # Backend Python dependencies
+│   └── run_backend.py               # Standalone backend CLI runner
+├── database/                        # Database storage & cryptographic evidence vault
 │   └── evidence/                    # Auto-generated evidence snapshots, clips & metadata
-├── demo/                            # Demonstration assets & synthetic video generator
+├── demo/                            # Synthetic border surveillance generator & test videos
 │   ├── generate_demo_videos.py      # OpenCV procedural video generator for border scenarios
 │   └── videos/                      # Intrusion, nighttime, patrol, and checkpoint test clips
 ├── docker/                          # Containerization configuration
 │   ├── Dockerfile                   # Headless OpenCV & FFmpeg Python runtime
-│   └── docker-compose.yml           # Multi-container service configuration
-├── docs/                            # In-depth architectural & operational documentation
-│   ├── architecture.md              # Detailed pipeline architecture & decision rationales
-│   ├── deployment.md                # Edge hardware requirements & container runbooks
-│   └── setup.md                     # Step-by-step developer installation guide
-├── frontend/                        # Tactical React Operator Dashboard
-│   ├── public/                      # Static branding assets
+│   └── docker-compose.yml           # Multi-container orchestration configuration
+├── docs/                            # Architectural specifications & deployment runbooks
+│   ├── architecture.md              # In-depth architectural designs & pipeline specifications
+│   ├── deployment.md                # Edge appliance hardware requirements & container guides
+│   └── setup.md                     # Step-by-step developer setup instructions
+├── frontend/                        # Tactical React Operator Command Center
+│   ├── public/                      # Static assets & icons
 │   ├── src/
-│   │   ├── components/              # Header, Navbar, Sidebar, ZoneDrawer, ReplayModal, RiskBadge
-│   │   ├── pages/                   # CommandCenter, Cameras, Incidents, Analytics, Settings
-│   │   └── services/                # Axios API client & WebSocket connections
-│   ├── package.json                 # Node dependencies
-│   └── vite.config.js               # Vite build configuration
+│   │   ├── components/              # Header, Sidebar, ZoneDrawer, ReplayModal, GeminiCard, HUD
+│   │   ├── pages/                   # CommandCenter, Cameras, GISMap, VehicleIntel, AIAnalysis, Settings
+│   │   └── services/                # API client with error handling & WebSocket telemetry
+│   ├── package.json                 # Node dependencies (React, Leaflet, Tailwind, Lucide)
+│   └── vite.config.js               # Vite build config with /api, /evidence, and /ws reverse proxies
 ├── installer/                       # Operational deployment scripts (Windows)
 │   ├── run_all.bat                  # One-click launcher for backend + frontend
 │   ├── run_tests.bat                # Automated verification runner
-│   ├── start_backend.bat            # Standalone backend service launcher
-│   ├── start_frontend.bat           # Standalone frontend service launcher
-│   └── create_zip.py                # Clean distribution archiver
+│   ├── start_backend.bat            # Standalone backend launcher
+│   ├── start_frontend.bat           # Standalone frontend launcher
+│   └── create_zip.py                # Clean distribution packaging utility
 ├── models/                          # Pre-trained edge AI model weights
 │   └── yolov8n.pt                   # Lightweight YOLOv8 nano edge checkpoint
-├── tests/                           # Unit, integration, and E2E verification tests
-│   └── test_all_scenarios.py        # Master test runner
+├── tests/                           # Unit, integration, and E2E verification test suites
+│   ├── test_all_scenarios.py        # Master test runner (7 suites)
+│   ├── test_enterprise_features.py  # Secrets, profiles, annotator tests
+│   └── test_vehicle_intel.py        # Vehicle verification & watchlist tests
 ├── .gitattributes                   # LF normalization & binary asset definitions
 ├── .gitignore                       # Production ignore rules (caches, venvs, DBs, modules)
 ├── LICENSE                          # MIT License
@@ -249,38 +273,47 @@ ibvap/
 
 ---
 
-## REST API Reference
+## 📡 REST API Reference
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET` | `/api/system/mode` | Returns current operational mode (`live` or `demo`) |
 | `GET` | `/api/system/stats` | Aggregate dashboard statistics (active cameras, incident counts) |
-| `GET` | `/api/cameras` | List all configured surveillance cameras with health telemetry |
-| `POST` | `/api/cameras` | Register a new camera (RTSP URL, USB index, or video path) |
-| `DELETE` | `/api/cameras/{id}` | Remove a camera and associated zones |
-| `GET` | `/api/cameras/{id}/stream` | Low-latency MJPEG live video stream |
+| `GET` | `/api/cameras` | List all cameras with health telemetry, profile, and GIS coordinates |
+| `POST` | `/api/cameras` | Register a new camera (RTSP URL, USB index, profile, coordinates) |
+| `PATCH` | `/api/cameras/{id}/config` | Dynamic camera configuration (modules, sensitivity, HUD overlay) |
+| `DELETE` | `/api/cameras/{id}` | Remove a camera and associated virtual zones |
+| `GET` | `/api/cameras/{id}/stream` | Low-latency MJPEG live stream with dynamic HUD overlays |
 | `GET` | `/api/zones` | List virtual zones (filterable by `camera_id`) |
 | `POST` | `/api/zones` | Define a new virtual polygon zone (`RESTRICTED` or `WARNING`) |
 | `DELETE` | `/api/zones/{id}` | Delete a virtual zone |
-| `GET` | `/api/events` | Paginated incident log with explainable risk breakdown |
-| `GET` | `/api/evidence/{id}` | Retrieve cryptographic evidence bundle (image, clip, SHA-256 hash) |
-| `POST` | `/api/demo/start` | Start synthetic multi-camera simulation loop |
-| `POST` | `/api/demo/stop` | Return to live stream processing |
+| `GET` | `/api/events` | Paginated incident log (supports `source=LIVE` vs `DEMO` filtering) |
+| `POST` | `/api/events/{id}/consult-gemini` | Request asynchronous secondary Gemini multimodal advisory |
+| `GET` | `/api/vehicles/authorized` | List authorized vehicles registry |
+| `POST` | `/api/vehicles/authorized` | Register a new authorized vehicle |
+| `POST` | `/api/vehicles/verify` | Real-time plate and attribute mismatch verification |
+| `GET` | `/api/vehicles/handoff/{id}` | Cross-camera predictive route correlation |
+| `GET` | `/api/profiles` | Catalog of surveillance operational profiles |
+| `GET` | `/api/ai/gemini/status` | Gemini advisory provider status (masked API key display) |
+| `POST` | `/api/ai/gemini/config` | Update Gemini API key securely via SecretsVault |
+| `GET` | `/api/evidence/{id}/dossier` | Retrieve complete forensic incident dossier with SHA-256 hashes |
+| `POST` | `/api/demo/start` | Launch synthetic multi-camera border simulation |
+| `POST` | `/api/demo/stop` | Terminate demo and restore live stream processing |
 
 ---
 
-## Edge Appliance Hardware Specifications
+## 🖥️ Edge Appliance Hardware Specifications
 
 | Component | Minimum Specification | Recommended Specification |
 | :--- | :--- | :--- |
 | **CPU** | Intel Core i5 (8th Gen) / AMD Ryzen 5 | Intel Core i7 (11th Gen+) / AMD Ryzen 7 |
 | **RAM** | 8 GB DDR4 | 16 GB DDR4 / DDR5 |
-| **GPU** | CPU-only inference supported | NVIDIA GTX 1650 / RTX 3060 / Jetson Orin |
+| **GPU** | CPU-only inference fully supported | NVIDIA GTX 1650 / RTX 3060 / Jetson Orin |
 | **Storage** | 128 GB SSD | 512 GB NVMe SSD |
 | **OS** | Windows 10/11 (64-bit) / Ubuntu 22.04 LTS | Windows 11 Pro / Ubuntu 24.04 LTS |
 
 ---
 
-## License
+## 📄 License
 
-This project is licensed under the **MIT License** -- see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
