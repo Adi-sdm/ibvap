@@ -7,6 +7,8 @@ import Incidents from './pages/Incidents';
 import EvidenceVault from './pages/EvidenceVault';
 import AIAnalysis from './pages/AIAnalysis';
 import Analytics from './pages/Analytics';
+import VehicleIntel from './pages/VehicleIntel';
+import GISMap from './pages/GISMap';
 import SettingsPage from './pages/SettingsPage';
 import EventReplayModal from './components/EventReplayModal';
 import AddCameraWizard from './components/AddCameraWizard';
@@ -110,6 +112,20 @@ export default function App() {
 
           {activeTab === 'ai_analysis' && (
             <AIAnalysis />
+          )}
+
+          {activeTab === 'vehicle_intel' && (
+            <VehicleIntel />
+          )}
+
+          {activeTab === 'gis_map' && (
+            <GISMap 
+              cameras={cameras} 
+              incidents={incidents} 
+              onNavigateToCameras={(camId) => {
+                setActiveTab('cameras');
+              }}
+            />
           )}
 
           {activeTab === 'analytics' && (

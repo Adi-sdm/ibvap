@@ -22,7 +22,11 @@ import {
   Clock,
   Check,
   Eye,
-  EyeOff
+  EyeOff,
+  Sun,
+  Moon,
+  Monitor,
+  Palette
 } from 'lucide-react';
 import { 
   startDemo, 
@@ -37,11 +41,13 @@ import {
   clearGeminiCredentials,
   getAIModels
 } from '../services/api';
+import PrivilegedActionModal from '../components/PrivilegedActionModal';
 
 export default function SettingsPage({ systemMode, onRefresh }) {
   const [auditLog, setAuditLog] = useState([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [models, setModels] = useState([]);
+  const [privilegedModal, setPrivilegedModal] = useState(null);
 
   // System Settings state
   const [settings, setSettings] = useState({
@@ -74,6 +80,13 @@ export default function SettingsPage({ systemMode, onRefresh }) {
   const [testingGemini, setTestingGemini] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [savingGemini, setSavingGemini] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem('ibvap_theme') || 'dark');
+
+  const handleThemeChange = (newTheme) => {
+    setTheme(newTheme);
+    localStorage.setItem('ibvap_theme', newTheme);
+    document.documentElement.setAttribute('data-theme', newTheme);
+  };
 
   useEffect(() => {
     loadAll();
@@ -82,21 +95,29 @@ export default function SettingsPage({ systemMode, onRefresh }) {
   const loadAll = async () => {
     try {
       const [cfg, gStatus, mList, aLog] = await Promise.all([
-        getSystemSettings(),
-        getGeminiStatus(),
-        getAIModels(),
-        getAuditLog()
+        getSystemSettings().catch(err => { console.warn("Failed to load settings:", err); return null; }),
+        getGeminiStatus().catch(err => { console.warn("Failed to load gemini status:", err); return null; }),
+        getAIModels().catch(err => { console.warn("Failed to load models:", err); return []; }),
+        getAuditLog().catch(err => { console.warn("Failed to load audit log:", err); return []; })
       ]);
-      if (cfg) {
-        setSettings(cfg);
-        setSelectedModel(cfg.gemini_model || 'gemini-2.0-flash');
+      if (cfg && !cfg.detail) {
+        setSettings(prev => ({ ...prev, ...cfg }));
+        if (cfg.gemini_model) setSelectedModel(cfg.gemini_model);
       }
-      if (gStatus) {
+      if (gStatus && !gStatus.detail) {
         setGeminiStatus(gStatus);
         if (gStatus.model) setSelectedModel(gStatus.model);
       }
-      if (mList) setModels(mList);
-      if (aLog) setAuditLog(aLog);
+      if (Array.isArray(mList)) {
+        setModels(mList);
+      } else {
+        setModels([]);
+      }
+      if (Array.isArray(aLog)) {
+        setAuditLog(aLog);
+      } else {
+        setAuditLog([]);
+      }
     } catch (err) {
       console.error("Failed to load settings:", err);
     }
@@ -180,11 +201,17 @@ export default function SettingsPage({ systemMode, onRefresh }) {
     }
   };
 
-  const handleClearKey = async () => {
-    if (window.confirm("Remove Gemini API Key from secure vault? System will operate strictly in Local AI Perception mode.")) {
-      await clearGeminiCredentials();
-      loadAll();
-    }
+  const handleClearKey = () => {
+    setPrivilegedModal({
+      actionName: "Purge Gemini Cloud AI Credentials",
+      description: "Purging vault credentials removes cloud secondary reasoning. System will operate exclusively in local edge AI perception mode.",
+      entityType: "SECURITY",
+      entityId: "GEMINI_CREDENTIALS",
+      onConfirm: async () => {
+        await clearGeminiCredentials();
+        loadAll();
+      }
+    });
   };
 
   const handleDemoToggle = async () => {
@@ -409,14 +436,14 @@ export default function SettingsPage({ systemMode, onRefresh }) {
               <div className="space-y-1.5">
                 <div className="flex justify-between text-slate-300">
                   <span>Detection Confidence Threshold:</span>
-                  <span className="text-emerald-400 font-bold">{Math.round(settings.detection_conf * 100)}%</span>
+                  <span className="text-emerald-400 font-bold">{Math.round(((settings?.detection_conf) ?? 0.25) * 100)}%</span>
                 </div>
                 <input
                   type="range"
                   min="0.10"
                   max="0.80"
                   step="0.05"
-                  value={settings.detection_conf}
+                  value={settings?.detection_conf ?? 0.25}
                   onChange={e => setSettings({ ...settings, detection_conf: parseFloat(e.target.value) })}
                   className="w-full accent-emerald-500 h-1 bg-slate-800 rounded appearance-none cursor-pointer"
                 />
@@ -425,14 +452,14 @@ export default function SettingsPage({ systemMode, onRefresh }) {
               <div className="space-y-1.5">
                 <div className="flex justify-between text-slate-300">
                   <span>Loitering Dwell Trigger Duration:</span>
-                  <span className="text-emerald-400 font-bold">{settings.loitering_seconds}s</span>
+                  <span className="text-emerald-400 font-bold">{settings?.loitering_seconds ?? 8.0}s</span>
                 </div>
                 <input
                   type="range"
                   min="3.0"
                   max="30.0"
                   step="1.0"
-                  value={settings.loitering_seconds}
+                  value={settings?.loitering_seconds ?? 8.0}
                   onChange={e => setSettings({ ...settings, loitering_seconds: parseFloat(e.target.value) })}
                   className="w-full accent-emerald-500 h-1 bg-slate-800 rounded appearance-none cursor-pointer"
                 />
@@ -441,14 +468,14 @@ export default function SettingsPage({ systemMode, onRefresh }) {
               <div className="space-y-1.5">
                 <div className="flex justify-between text-slate-300">
                   <span>Global Incident Alert Threshold:</span>
-                  <span className="text-amber-400 font-bold">{settings.alert_threshold} / 100</span>
+                  <span className="text-amber-400 font-bold">{settings?.alert_threshold ?? 60} / 100</span>
                 </div>
                 <input
                   type="range"
                   min="30"
                   max="90"
                   step="5"
-                  value={settings.alert_threshold}
+                  value={settings?.alert_threshold ?? 60}
                   onChange={e => setSettings({ ...settings, alert_threshold: parseInt(e.target.value) })}
                   className="w-full accent-amber-500 h-1 bg-slate-800 rounded appearance-none cursor-pointer"
                 />
@@ -461,7 +488,7 @@ export default function SettingsPage({ systemMode, onRefresh }) {
                     type="number"
                     min="7"
                     max="365"
-                    value={settings.evidence_retention_days}
+                    value={settings?.evidence_retention_days ?? 30}
                     onChange={e => setSettings({ ...settings, evidence_retention_days: parseInt(e.target.value) || 30 })}
                     className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-white"
                   />
@@ -472,7 +499,7 @@ export default function SettingsPage({ systemMode, onRefresh }) {
                     type="number"
                     min="5"
                     max="60"
-                    value={settings.cooldown_seconds}
+                    value={settings?.cooldown_seconds ?? 15}
                     onChange={e => setSettings({ ...settings, cooldown_seconds: parseInt(e.target.value) || 15 })}
                     className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-white"
                   />
@@ -518,8 +545,8 @@ export default function SettingsPage({ systemMode, onRefresh }) {
             </p>
 
             <div className="space-y-2.5">
-              {models.map(m => (
-                <div key={m.name} className="p-3 bg-slate-950 rounded-lg border border-slate-800 text-xs">
+              {(Array.isArray(models) ? models : []).map(m => (
+                <div key={m.name || Math.random()} className="p-3 bg-slate-950 rounded-lg border border-slate-800 text-xs">
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-mono font-bold text-slate-200">{m.name}</span>
                     <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-semibold border ${
@@ -538,7 +565,81 @@ export default function SettingsPage({ systemMode, onRefresh }) {
                   )}
                 </div>
               ))}
+              {(!Array.isArray(models) || models.length === 0) && (
+                <div className="text-center text-slate-500 py-4 text-xs font-mono">
+                  Loading model registry status...
+                </div>
+              )}
             </div>
+          </div>
+
+          {/* SECTION: APPEARANCE & THEME */}
+          <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-4 shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center space-x-2">
+                <Palette className="w-4 h-4 text-cyan-400" />
+                <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-200">
+                  Operations Console Theme
+                </h3>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+              <button
+                type="button"
+                onClick={() => handleThemeChange('dark')}
+                className={`p-3 rounded border text-center transition flex flex-col items-center gap-1.5 ${
+                  theme === 'dark' 
+                    ? 'bg-slate-800 border-cyan-500 text-cyan-300 font-bold shadow' 
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Moon className="w-4 h-4" />
+                <span>Tactical Dark</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleThemeChange('glass')}
+                className={`p-3 rounded border text-center transition flex flex-col items-center gap-1.5 ${
+                  theme === 'glass' 
+                    ? 'bg-slate-800 border-cyan-500 text-cyan-300 font-bold shadow' 
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Sparkles className="w-4 h-4 text-cyan-400" />
+                <span>Glass Command</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleThemeChange('light')}
+                className={`p-3 rounded border text-center transition flex flex-col items-center gap-1.5 ${
+                  theme === 'light' 
+                    ? 'bg-slate-800 border-cyan-500 text-cyan-300 font-bold shadow' 
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Sun className="w-4 h-4" />
+                <span>Clean Light</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleThemeChange('system')}
+                className={`p-3 rounded border text-center transition flex flex-col items-center gap-1.5 ${
+                  theme === 'system' 
+                    ? 'bg-slate-800 border-cyan-500 text-cyan-300 font-bold shadow' 
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Monitor className="w-4 h-4" />
+                <span>System</span>
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 font-sans">
+              High-contrast tactical dark and authentic glass themes with blur-protected surveillance streams.
+            </p>
           </div>
 
           {/* SECTION 4: AUDIT LOG */}
@@ -554,16 +655,16 @@ export default function SettingsPage({ systemMode, onRefresh }) {
             </div>
 
             <div className="space-y-2 max-h-72 overflow-y-auto font-mono text-xs">
-              {auditLog.slice(0, 8).map(log => (
-                <div key={log.id} className="p-2.5 bg-slate-950 rounded border border-slate-800/80">
+              {(Array.isArray(auditLog) ? auditLog : []).slice(0, 8).map(log => (
+                <div key={log.id || Math.random()} className="p-2.5 bg-slate-950 rounded border border-slate-800/80">
                   <div className="flex justify-between items-center text-[10px] text-slate-500">
                     <span className="font-semibold text-emerald-400">{log.action}</span>
-                    <span>{new Date(log.timestamp * 1000).toLocaleTimeString()}</span>
+                    <span>{log.timestamp ? new Date(log.timestamp * 1000).toLocaleTimeString() : 'Recent'}</span>
                   </div>
                   <div className="text-slate-300 text-[11px] mt-1 font-sans">{log.details || log.entity_type}</div>
                 </div>
               ))}
-              {auditLog.length === 0 && (
+              {(!Array.isArray(auditLog) || auditLog.length === 0) && (
                 <div className="text-center text-slate-500 py-6 text-xs font-mono">
                   Audit trail records logged on action events.
                 </div>
@@ -572,6 +673,18 @@ export default function SettingsPage({ systemMode, onRefresh }) {
           </div>
         </div>
       </div>
+
+      {privilegedModal && (
+        <PrivilegedActionModal
+          isOpen={true}
+          actionName={privilegedModal.actionName}
+          description={privilegedModal.description}
+          entityType={privilegedModal.entityType}
+          entityId={privilegedModal.entityId}
+          onConfirm={privilegedModal.onConfirm}
+          onClose={() => setPrivilegedModal(null)}
+        />
+      )}
     </div>
   );
 }

@@ -42,6 +42,8 @@ import AddCameraWizard from '../components/AddCameraWizard';
 import ZoneDrawer from '../components/ZoneDrawer';
 import RiskBadge from '../components/RiskBadge';
 import OverlayControls from '../components/OverlayControls';
+import LiveAIAnalysisCard from '../components/LiveAIAnalysisCard';
+import PrivilegedActionModal from '../components/PrivilegedActionModal';
 
 export default function CamerasPage({ cameras = [], onRefresh }) {
   const [selectedCam, setSelectedCam] = useState(null);
@@ -49,6 +51,7 @@ export default function CamerasPage({ cameras = [], onRefresh }) {
   const [showAddWizard, setShowAddWizard] = useState(false);
   const [healthData, setHealthData] = useState(null);
   const [showZoneDrawer, setShowZoneDrawer] = useState(false);
+  const [showLiveAIAnalysis, setShowLiveAIAnalysis] = useState(false);
   const [camZones, setCamZones] = useState([]);
   const [camEvents, setCamEvents] = useState([]);
   const [camANPR, setCamANPR] = useState([]);
@@ -57,6 +60,7 @@ export default function CamerasPage({ cameras = [], onRefresh }) {
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [profilesCatalog, setProfilesCatalog] = useState([]);
+  const [privilegedModal, setPrivilegedModal] = useState(null);
 
   // Local editable config for selected camera
   const [editProfile, setEditProfile] = useState('Border Fence Monitoring');
@@ -168,12 +172,19 @@ export default function CamerasPage({ cameras = [], onRefresh }) {
     }
   };
 
-  const handleDelete = async () => {
-    if (window.confirm(`Permanently decommission camera feed '${selectedCam.name}' (${selectedCam.camera_id})?`)) {
-      await deleteCamera(selectedCam.camera_id);
-      setSelectedCam(null);
-      if (onRefresh) onRefresh();
-    }
+  const handleDelete = () => {
+    if (!selectedCam) return;
+    setPrivilegedModal({
+      actionName: `Decommission Camera '${selectedCam.name}'`,
+      description: `Permanently removes camera feed ${selectedCam.camera_id} from perimeter topology. Ingestion pipeline, detection loops, and analytics will cease immediately.`,
+      entityType: 'CAMERA',
+      entityId: selectedCam.camera_id,
+      onConfirm: async () => {
+        await deleteCamera(selectedCam.camera_id);
+        setSelectedCam(null);
+        if (onRefresh) onRefresh();
+      }
+    });
   };
 
   const handleStart = async () => {
@@ -186,14 +197,23 @@ export default function CamerasPage({ cameras = [], onRefresh }) {
     }
   };
 
-  const handleStop = async () => {
-    setPipelineActionRunning(true);
-    try {
-      await stopCamera(selectedCam.camera_id);
-      if (onRefresh) onRefresh();
-    } finally {
-      setPipelineActionRunning(false);
-    }
+  const handleStop = () => {
+    if (!selectedCam) return;
+    setPrivilegedModal({
+      actionName: `Halt Ingestion Pipeline for '${selectedCam.name}'`,
+      description: `Disables real-time surveillance processing for sector ${selectedCam.sector}. Virtual geofences and loitering escalation will be inactive while halted.`,
+      entityType: 'CAMERA',
+      entityId: selectedCam.camera_id,
+      onConfirm: async () => {
+        setPipelineActionRunning(true);
+        try {
+          await stopCamera(selectedCam.camera_id);
+          if (onRefresh) onRefresh();
+        } finally {
+          setPipelineActionRunning(false);
+        }
+      }
+    });
   };
 
   const TABS = [
@@ -434,31 +454,61 @@ export default function CamerasPage({ cameras = [], onRefresh }) {
                 </div>
               )}
 
-              {/* TAB: LIVE STREAM WITH FLOATING OVERLAY CONTROLS */}
+              {/* TAB: LIVE STREAM WITH FLOATING OVERLAY CONTROLS & AI PERCEPTION */}
               {activeTab === 'Live' && (
                 <div className="space-y-4">
-                  <div className="relative aspect-video bg-black rounded-lg overflow-hidden border border-slate-800 flex items-center justify-center group">
-                    <img 
-                      src={getCameraStreamUrl(selectedCam.camera_id, true)} 
-                      alt="Live Stream" 
-                      className="w-full h-full object-contain"
-                      onError={(e) => {
-                        e.target.onerror = null;
-                        e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="340" fill="%230f172a"><rect width="600" height="340"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%2364748b" font-family="monospace" font-size="14">CONNECTING TO VIDEO INGESTION PIPELINE...</text></svg>';
-                      }}
-                    />
-                    
-                    {/* Top Tactical Badge */}
-                    <div className="absolute top-3 left-3 bg-slate-950/80 backdrop-blur px-2.5 py-1 rounded text-xs text-white font-mono flex items-center space-x-2 border border-slate-800">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="font-bold">{selectedCam.sector || 'SECTOR'} • {selectedCam.profile || 'PERIMETER'}</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono font-bold text-slate-300 uppercase flex items-center gap-2">
+                      <Activity className="w-4 h-4 text-emerald-400" />
+                      Live Surveillance Feed // Active Ingestion
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowLiveAIAnalysis(prev => !prev)}
+                      className={`px-3 py-1.5 rounded text-xs font-mono font-bold transition flex items-center gap-1.5 shadow-md ${
+                        showLiveAIAnalysis 
+                          ? 'bg-rose-600 hover:bg-rose-500 text-white animate-pulse' 
+                          : 'bg-cyan-600 hover:bg-cyan-500 text-white'
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      {showLiveAIAnalysis ? 'STOP AI ANALYSIS' : '⚡ ANALYZE WITH AI'}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div className={`${showLiveAIAnalysis ? 'lg:col-span-2' : 'lg:col-span-3'} relative aspect-video bg-black rounded-lg overflow-hidden border border-slate-800 flex items-center justify-center group`}>
+                      <img 
+                        src={getCameraStreamUrl(selectedCam.camera_id, true)} 
+                        alt="Live Stream" 
+                        className="w-full h-full object-contain"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="340" fill="%230f172a"><rect width="600" height="340"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%2364748b" font-family="monospace" font-size="14">CONNECTING TO VIDEO INGESTION PIPELINE...</text></svg>';
+                        }}
+                      />
+                      
+                      {/* Top Tactical Badge */}
+                      <div className="absolute top-3 left-3 bg-slate-950/80 backdrop-blur px-2.5 py-1 rounded text-xs text-white font-mono flex items-center space-x-2 border border-slate-800">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="font-bold">{selectedCam.sector || 'SECTOR'} • {selectedCam.profile || 'PERIMETER'}</span>
+                      </div>
+
+                      {/* Interactive HUD Overlay Toolbar */}
+                      <OverlayControls 
+                        overlayConfig={currentOverlay}
+                        onChange={handleOverlayToggle}
+                      />
                     </div>
 
-                    {/* Interactive HUD Overlay Toolbar */}
-                    <OverlayControls 
-                      overlayConfig={currentOverlay}
-                      onChange={handleOverlayToggle}
-                    />
+                    {showLiveAIAnalysis && (
+                      <div className="lg:col-span-1">
+                        <LiveAIAnalysisCard 
+                          cameraId={selectedCam.camera_id} 
+                          onClose={() => setShowLiveAIAnalysis(false)} 
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -604,10 +654,11 @@ export default function CamerasPage({ cameras = [], onRefresh }) {
                   </div>
 
                   {showZoneDrawer ? (
-                    <div className="relative aspect-video bg-black rounded-lg overflow-hidden border border-slate-800">
-                      <img src={getCameraStreamUrl(selectedCam.camera_id, false)} className="w-full h-full object-contain" alt="Stream" />
+                    <div className="relative min-h-[460px] bg-black rounded-lg overflow-hidden border border-slate-800">
                       <ZoneDrawer 
                         cameraId={selectedCam.camera_id} 
+                        streamUrl={getCameraStreamUrl(selectedCam.camera_id, false)}
+                        existingZones={camZones}
                         onCancel={() => setShowZoneDrawer(false)}
                         onZoneSaved={() => {
                           setShowZoneDrawer(false);
@@ -621,15 +672,35 @@ export default function CamerasPage({ cameras = [], onRefresh }) {
                         <div className="space-y-2">
                           {camZones.map(z => (
                             <div key={z.zone_id} className="flex justify-between items-center p-3 bg-slate-900 rounded border border-slate-800">
-                              <div>
-                                <span className="text-xs text-white font-semibold">{z.name}</span>
-                                <span className="ml-2 text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 uppercase">
-                                  {z.zone_type}
-                                </span>
+                              <div className="flex items-center gap-3">
+                                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: z.color || '#EF4444' }} />
+                                <div>
+                                  <span className="text-xs text-white font-semibold">{z.name}</span>
+                                  <span className="ml-2 text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 uppercase">
+                                    {z.zone_type}
+                                  </span>
+                                </div>
                               </div>
-                              <span className="text-[10px] font-mono text-slate-400">
-                                {z.coordinates?.length || z.polygon_coords?.length || 0} Polygon Vertices
-                              </span>
+                              <div className="flex items-center gap-4">
+                                <span className="text-[10px] font-mono text-slate-400">
+                                  {z.coordinates?.length || z.polygon_coords?.length || 0} Polygon Vertices
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    try {
+                                      await deleteZone(z.zone_id);
+                                      const updated = await getZones(selectedCam.camera_id);
+                                      setCamZones(updated || []);
+                                    } catch (e) {
+                                      console.error("Failed to delete zone", e);
+                                    }
+                                  }}
+                                  className="px-2 py-1 bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/60 rounded text-[11px] font-mono transition"
+                                >
+                                  Delete
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -896,6 +967,18 @@ export default function CamerasPage({ cameras = [], onRefresh }) {
             setShowAddWizard(false); 
             if (onRefresh) onRefresh(); 
           }} 
+        />
+      )}
+
+      {privilegedModal && (
+        <PrivilegedActionModal
+          isOpen={true}
+          actionName={privilegedModal.actionName}
+          description={privilegedModal.description}
+          entityType={privilegedModal.entityType}
+          entityId={privilegedModal.entityId}
+          onConfirm={privilegedModal.onConfirm}
+          onClose={() => setPrivilegedModal(null)}
         />
       )}
     </div>

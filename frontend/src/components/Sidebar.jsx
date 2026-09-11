@@ -11,7 +11,9 @@ import {
   Radio, 
   AlertTriangle,
   Clock,
-  UserCheck
+  UserCheck,
+  Car,
+  Map
 } from 'lucide-react';
 
 export default function Sidebar({ activeTab, onTabChange, wsConnected, systemMode, unreadCount = 0 }) {
@@ -35,6 +37,8 @@ export default function Sidebar({ activeTab, onTabChange, wsConnected, systemMod
     { id: 'incidents', label: 'Incidents', icon: ShieldAlert, badge: unreadCount > 0 ? unreadCount : null },
     { id: 'evidence_vault', label: 'Evidence Vault', icon: Database, badge: null },
     { id: 'ai_analysis', label: 'AI Analysis', icon: Cpu, badge: null },
+    { id: 'vehicle_intel', label: 'Vehicle Intel & ANPR', icon: Car, badge: null },
+    { id: 'gis_map', label: 'Tactical GIS Map', icon: Map, badge: null },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, badge: null },
     { id: 'settings', label: 'Settings', icon: Settings, badge: null },
   ];

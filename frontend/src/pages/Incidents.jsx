@@ -402,10 +402,10 @@ export default function Incidents({ onSelectIncident }) {
                     </div>
                     <div className="text-[11px] text-slate-400 mb-1">SHA-256 Checksum:</div>
                     <div className="p-2 rounded bg-slate-900 border border-slate-800 font-mono text-[10px] text-emerald-400 break-all select-all flex items-center justify-between">
-                      <span>{selectedIncident.evidence_hash || selectedIncident.sha256 || 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'}</span>
+                      <span>{selectedIncident.evidence_hash || selectedIncident.sha256 || 'Unsealed (Hash Pending)'}</span>
                     </div>
                     <button
-                      onClick={() => copyHash(selectedIncident.evidence_hash || selectedIncident.sha256 || 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')}
+                      onClick={() => copyHash(selectedIncident.evidence_hash || selectedIncident.sha256 || 'Unsealed')}
                       className="mt-2 w-full py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono flex items-center justify-center space-x-1.5 transition border border-slate-700"
                     >
                       {copiedHash ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}

@@ -167,7 +167,7 @@ export default function EvidenceVault({ onSelectIncident }) {
                   const snapUrl = snapPath 
                     ? (snapPath.startsWith('/') || snapPath.startsWith('http') ? snapPath : `/${snapPath.replace(/\\/g, '/')}`)
                     : `/evidence/${eventId}_snapshot.jpg`;
-                  const shaHash = item.sha256_hash || item.sha256 || 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+                  const shaHash = item.sha256_hash || item.sha256 || 'Unsealed';
 
                   return (
                     <tr key={eventId} className="hover:bg-slate-800/40 transition">

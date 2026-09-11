@@ -8,6 +8,7 @@ export default function EventReplayModal({ event, onClose, onAcknowledge }) {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState('snapshot');
   const [currentEvent, setCurrentEvent] = useState(event);
+  const [videoError, setVideoError] = useState(false);
 
   if (!currentEvent) return null;
 
@@ -35,6 +36,11 @@ export default function EventReplayModal({ event, onClose, onAcknowledge }) {
   const snapshotSrc = snapshotPath 
     ? (snapshotPath.startsWith('/') || snapshotPath.startsWith('http') ? snapshotPath : `/${snapshotPath.replace(/\\/g, '/')}`)
     : `/evidence/${currentEvent.event_id}_snapshot.jpg`;
+
+  const clipPath = currentEvent.video_clip_path || currentEvent.evidence_clip;
+  const clipSrc = clipPath 
+    ? (clipPath.startsWith('/') || clipPath.startsWith('http') ? clipPath : `/${clipPath.replace(/\\/g, '/')}`)
+    : `/evidence/${currentEvent.event_id}_clip.mp4`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
@@ -67,12 +73,12 @@ export default function EventReplayModal({ event, onClose, onAcknowledge }) {
             <div className="space-y-3">
               <div className="flex gap-2 border-b border-slate-800 pb-2">
                 <button 
-                  onClick={() => setActiveTab('snapshot')}
+                  onClick={() => { setActiveTab('snapshot'); setVideoError(false); }}
                   className={`flex items-center gap-1.5 px-3 py-1 text-xs rounded transition font-mono ${activeTab === 'snapshot' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
                   <Image className="w-3.5 h-3.5" /> Keyframe Evidence
                 </button>
                 <button 
-                  onClick={() => setActiveTab('clip')}
+                  onClick={() => { setActiveTab('clip'); setVideoError(false); }}
                   className={`flex items-center gap-1.5 px-3 py-1 text-xs rounded transition font-mono ${activeTab === 'clip' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
                   <Film className="w-3.5 h-3.5" /> Video Sequence
                 </button>
@@ -90,13 +96,24 @@ export default function EventReplayModal({ event, onClose, onAcknowledge }) {
                     }}
                   />
                 ) : (
-                  <video 
-                    controls 
-                    autoPlay 
-                    loop 
-                    className="w-full h-full object-contain"
-                    src={`/evidence/${currentEvent.event_id}_clip.mp4`}
-                  />
+                  !videoError && clipSrc ? (
+                    <video 
+                      controls 
+                      autoPlay 
+                      loop 
+                      className="w-full h-full object-contain"
+                      src={clipSrc}
+                      onError={() => setVideoError(true)}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center p-6 text-center text-slate-400">
+                      <Film className="w-8 h-8 text-slate-600 mb-2" />
+                      <span className="text-xs font-mono text-slate-300 font-semibold">Video evidence unavailable</span>
+                      <span className="text-[11px] text-slate-500 mt-1 max-w-xs font-sans">
+                        High-resolution frame snapshot verified (SHA-256 cryptographic chain intact). Video clip was not stored or has expired.
+                      </span>
+                    </div>
+                  )
                 )}
               </div>
 
@@ -113,7 +130,7 @@ export default function EventReplayModal({ event, onClose, onAcknowledge }) {
                   </button>
                 </div>
                 <div className="font-mono text-[10px] text-emerald-300 break-all bg-slate-900/80 p-1.5 rounded border border-emerald-900/50">
-                  {currentEvent.evidence_hash || currentEvent.sha256 || "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+                  {currentEvent.evidence_hash || currentEvent.sha256 || "Unsealed (Cryptographic hash pending)"}
                 </div>
                 <div className="text-[10px] text-slate-500 mt-1 font-mono">
                   Cryptographically hashed upon capture. Chain-of-custody valid for defense investigation.

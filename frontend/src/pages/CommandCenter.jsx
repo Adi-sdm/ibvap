@@ -12,14 +12,17 @@ import {
   AlertTriangle,
   Layers,
   Search,
-  ExternalLink
+  ExternalLink,
+  Sparkles
 } from 'lucide-react';
 import { getCameraStreamUrl, updateEventStatus, getActivityTimeline } from '../services/api';
 import RiskBadge from '../components/RiskBadge';
+import LiveAIAnalysisCard from '../components/LiveAIAnalysisCard';
 
 export default function CommandCenter({ stats, cameras = [], incidents = [], onSelectIncident, onNavigateToCameras, onRefresh }) {
   const [timeline, setTimeline] = useState([]);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
+  const [activeAiCamId, setActiveAiCamId] = useState(null);
 
   // Fetch real-time activity timeline
   useEffect(() => {
@@ -346,7 +349,7 @@ export default function CommandCenter({ stats, cameras = [], incidents = [], onS
             <div className="space-y-3">
               {cameras.length > 0 ? (
                 cameras.slice(0, 2).map((cam) => (
-                  <div key={cam.camera_id} className="relative rounded bg-black border border-slate-800 overflow-hidden aspect-video">
+                  <div key={cam.camera_id} className="relative rounded bg-black border border-slate-800 overflow-hidden aspect-video group">
                     <img 
                       src={getCameraStreamUrl(cam.camera_id)} 
                       alt={cam.name}
@@ -360,6 +363,19 @@ export default function CommandCenter({ stats, cameras = [], incidents = [], onS
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                       <span>{cam.name}</span>
                     </div>
+                    
+                    {/* Hover AI Analysis Trigger */}
+                    <div className="absolute top-2 right-2 opacity-90 group-hover:opacity-100 transition">
+                      <button
+                        type="button"
+                        onClick={() => setActiveAiCamId(cam.camera_id)}
+                        className="px-2 py-0.5 bg-cyan-600/90 hover:bg-cyan-500 text-white rounded text-[10px] font-mono font-bold flex items-center gap-1 shadow"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        AI Analysis
+                      </button>
+                    </div>
+
                     <div className="absolute bottom-2 right-2 bg-black/80 px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-400">
                       LIVE MJPEG
                     </div>
@@ -373,6 +389,18 @@ export default function CommandCenter({ stats, cameras = [], incidents = [], onS
                 </div>
               )}
             </div>
+
+            {/* Modal Live AI Perception HUD */}
+            {activeAiCamId && (
+              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="w-full max-w-2xl">
+                  <LiveAIAnalysisCard 
+                    cameraId={activeAiCamId} 
+                    onClose={() => setActiveAiCamId(null)} 
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

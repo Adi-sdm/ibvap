@@ -19,8 +19,18 @@ export const updateEventStatus = (id, status) => fetch(`${API_BASE}/events/${id}
 export const updateEventFeedback = (id, feedback, notes) => fetch(`${API_BASE}/events/${id}/feedback`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({feedback, notes}) }).then(r => r.json());
 export const consultGemini = (eventId) => fetch(`${API_BASE}/events/${eventId}/consult-gemini`, { method: 'POST' }).then(r => r.json());
 
-// ANPR
+// ANPR & Vehicle Intelligence
 export const getANPR = (offset = 0, limit = 25) => fetch(`${API_BASE}/anpr?offset=${offset}&limit=${limit}`).then(r => r.json());
+export const getAuthorizedVehicles = () => fetch(`${API_BASE}/vehicles/authorized`).then(r => r.json());
+export const createAuthorizedVehicle = (data) => fetch(`${API_BASE}/vehicles/authorized`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(r => r.json());
+export const deleteAuthorizedVehicle = (plate) => fetch(`${API_BASE}/vehicles/authorized/${encodeURIComponent(plate)}`, { method: 'DELETE' }).then(r => r.json());
+export const verifyVehicleIntel = (plate, detected_color, sector) => fetch(`${API_BASE}/vehicles/verify`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ plate, detected_color, sector }) }).then(r => r.json());
+export const getVehicleHandoff = (cameraId) => fetch(`${API_BASE}/vehicles/handoff?camera_id=${encodeURIComponent(cameraId)}`).then(r => r.json());
+
+// Authorized Personnel
+export const getAuthorizedPersonnel = () => fetch(`${API_BASE}/personnel/authorized`).then(r => r.json());
+export const createAuthorizedPerson = (data) => fetch(`${API_BASE}/personnel/authorized`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(r => r.json());
+export const deleteAuthorizedPerson = (id) => fetch(`${API_BASE}/personnel/authorized/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(r => r.json());
 
 // Virtual Geofence Zones
 export const getZones = (cameraId) => fetch(`${API_BASE}/zones${cameraId ? '?camera_id=' + cameraId : ''}`).then(r => r.json());
@@ -60,7 +70,9 @@ export const getIncidentDossier = (eventId) => fetch(`${API_BASE}/evidence/${eve
 // Activity Timeline & Behavioral AI
 export const getActivityTimeline = (limit = 30) => fetch(`${API_BASE}/system/timeline?limit=${limit}`).then(r => r.json());
 export const getAIAnalysis = () => fetch(`${API_BASE}/ai/analysis`).then(r => r.json());
-export const getAuditLog = () => fetch(`${API_BASE}/audit-log`).then(r => r.json());
+export const getCameraActivityAnalysis = (cameraId) => fetch(`${API_BASE}/cameras/${encodeURIComponent(cameraId)}/activity-analysis`).then(r => r.json());
+export const getAuditLog = () => fetch(`${API_BASE}/audit-log`).then(r => r.ok ? r.json() : []);
+export const createAuditLog = (data) => fetch(`${API_BASE}/audit-log`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(r => r.json());
 
 // WebSocket Live Telemetry
 export function connectWebSocket(onMessage) {
