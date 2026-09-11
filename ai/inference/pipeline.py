@@ -251,7 +251,8 @@ class CameraPipeline(threading.Thread):
         if cap.isOpened():
             w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            fps = cap.get(cv2.CAP_PROP_FPS) or 20.0
+            raw_fps = cap.get(cv2.CAP_PROP_FPS)
+            fps = raw_fps if (raw_fps is not None and raw_fps > 0) else 20.0
             self.health_status["resolution"] = f"{w}x{h}"
             self.health_status["fps"] = round(fps, 1)
             print(f"[{self.camera_id}] Video feed connected: {w}x{h} @ {fps:.1f} FPS")
@@ -268,6 +269,7 @@ class CameraPipeline(threading.Thread):
         cap = self._open_capture()
         reconnect_delay = 5
         max_reconnect_delay = 30
+        consecutive_failures = 0
         
         while self.running:
             if not cap or not cap.isOpened():
@@ -281,17 +283,19 @@ class CameraPipeline(threading.Thread):
             ret, frame = cap.read()
             
             if not ret:
-                if isinstance(self.source, int) or (isinstance(self.source, str) and (str(self.source).isdigit() or str(self.source).lower() == "webcam")):
-                    time.sleep(0.05)
-                    continue
-                elif not (isinstance(self.source, str) and self.source.startswith("rtsp://")):
-                    cap.release()
+                consecutive_failures += 1
+                if consecutive_failures >= 10:
+                    print(f"[{self.camera_id}] Multiple frame capture failures ({consecutive_failures}). Re-opening camera feed...")
+                    if cap:
+                        cap.release()
+                    time.sleep(1.0)
                     cap = self._open_capture()
-                    continue
+                    consecutive_failures = 0
                 else:
-                    cap.release()
-                    cap = None
-                    continue
+                    time.sleep(0.04)
+                continue
+
+            consecutive_failures = 0
 
             # Update health
             health = self.health_monitor.update(frame)

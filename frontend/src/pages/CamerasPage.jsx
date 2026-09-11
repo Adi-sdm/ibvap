@@ -47,7 +47,7 @@ import PrivilegedActionModal from '../components/PrivilegedActionModal';
 
 export default function CamerasPage({ cameras = [], onRefresh }) {
   const [selectedCam, setSelectedCam] = useState(null);
-  const [activeTab, setActiveTab] = useState('Overview');
+  const [activeTab, setActiveTab] = useState('Live');
   const [showAddWizard, setShowAddWizard] = useState(false);
   const [healthData, setHealthData] = useState(null);
   const [showZoneDrawer, setShowZoneDrawer] = useState(false);

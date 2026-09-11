@@ -202,6 +202,19 @@ class FrameAnnotator:
         cv2.circle(frame, (w - 20, 18), 5, (50, 220, 50), -1)
         cv2.putText(frame, "LIVE", (w - 60, 22), self.font, 0.38, (50, 220, 50), 1, cv2.LINE_AA)
 
+        # Check for sensor occlusion / privacy shutter closed (mean pixel < 3.0)
+        if np.mean(frame) < 3.0:
+            warn_title = "HARDWARE ACTIVE — ZERO LIGHT DETECTED"
+            warn_sub = "Webcam lens is covered or physical privacy shutter is closed."
+            (wt1, ht1), _ = cv2.getTextSize(warn_title, self.font, 0.45, 1)
+            (wt2, ht2), _ = cv2.getTextSize(warn_sub, self.font, 0.36, 1)
+            max_tw = max(wt1, wt2)
+            cx, cy = w // 2, h // 2
+            cv2.rectangle(frame, (cx - max_tw//2 - 14, cy - 26), (cx + max_tw//2 + 14, cy + 26), (15, 23, 42), -1)
+            cv2.rectangle(frame, (cx - max_tw//2 - 14, cy - 26), (cx + max_tw//2 + 14, cy + 26), (40, 140, 240), 1)
+            cv2.putText(frame, warn_title, (cx - wt1//2, cy - 6), self.font, 0.45, (40, 180, 255), 1, cv2.LINE_AA)
+            cv2.putText(frame, warn_sub, (cx - wt2//2, cy + 15), self.font, 0.36, (203, 213, 225), 1, cv2.LINE_AA)
+
         return frame
 
 frame_annotator = FrameAnnotator()

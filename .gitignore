@@ -54,3 +54,6 @@ desktop.ini
 database/.secrets.json
 *.db.bak
 
+
+# Root test camera captures
+/*.jpg
