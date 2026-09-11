@@ -309,11 +309,17 @@ def list_events(
     limit: int = 50, 
     severity: Optional[str] = None,
     event_type: Optional[str] = None,
+    source: Optional[str] = None,
     include_demo: bool = False,
     db: Session = Depends(get_db)
 ):
     query = db.query(EventDB)
-    if not include_demo:
+    if source:
+        if source.upper() == "DEMO":
+            query = query.filter(EventDB.is_demo == True)
+        elif source.upper() == "LIVE":
+            query = query.filter(EventDB.is_demo == False)
+    elif not include_demo:
         query = query.filter(EventDB.is_demo == False)
     if severity:
         query = query.filter(EventDB.severity == severity)
@@ -676,13 +682,24 @@ def get_incident_dossier(event_id: str, db: Session = Depends(get_db)):
 
 # --- SYSTEM STATS & TIMELINE ---
 @router.get("/system/stats", response_model=SystemStats)
-def get_system_stats(db: Session = Depends(get_db)):
+def get_system_stats(source: Optional[str] = None, db: Session = Depends(get_db)):
     from backend.app.main import active_pipelines
-    total_cams = db.query(CameraDB).filter(CameraDB.is_demo == False).count()
+    
+    is_demo_filter = (source.upper() == "DEMO") if source else False
+    
+    total_cams = db.query(CameraDB).filter(CameraDB.is_demo == is_demo_filter).count()
     active_cams = len(active_pipelines)
-    total_events = db.query(EventDB).filter(EventDB.is_demo == False).count()
-    active_events = db.query(EventDB).filter(EventDB.is_demo == False, EventDB.status == "NEW").count()
-    total_anpr = db.query(ANPRDB).filter(ANPRDB.is_demo == False).count()
+    total_events = db.query(EventDB).filter(EventDB.is_demo == is_demo_filter).count()
+    
+    # Calculate active operational incidents dynamically: unacknowledged events within the last 15 minutes (900s)
+    recent_cutoff = time.time() - 900.0
+    active_events = db.query(EventDB).filter(
+        EventDB.is_demo == is_demo_filter,
+        EventDB.status == "NEW",
+        EventDB.timestamp >= recent_cutoff
+    ).count()
+    
+    total_anpr = db.query(ANPRDB).filter(ANPRDB.is_demo == is_demo_filter).count()
     
     total_tracks = 0
     for pipe in active_pipelines.values():

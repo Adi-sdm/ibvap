@@ -1,63 +1,93 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import L from 'leaflet';
 import { 
-  Map, 
+  Map as MapIcon, 
   Compass, 
   Camera, 
   Crosshair, 
   Eye, 
-  Plus,
-  Navigation,
-  ExternalLink,
-  Sliders,
-  Save,
-  Check,
-  MapPin,
-  LocateFixed,
-  AlertTriangle,
-  X
+  EyeOff,
+  Navigation, 
+  Sliders, 
+  Save, 
+  Check, 
+  MapPin, 
+  LocateFixed, 
+  AlertTriangle, 
+  Layers, 
+  RotateCw,
+  X,
+  ExternalLink
 } from 'lucide-react';
 import { 
   getCameraStreamUrl, 
   getSystemSettings, 
   updateSystemSettings, 
-  updateCameraConfig, 
-  createCamera 
+  updateCameraConfig 
 } from '../services/api';
 
+// Geodesic coordinate calculation for circular sector FOV cone
+function calculateFovPolygon(lat, lng, headingDeg, fovDeg, rangeMeters) {
+  const R = 6371000; // Earth radius in meters
+  const points = [[lat, lng]]; // Apex at camera position
+  
+  const startAngle = headingDeg - (fovDeg / 2);
+  const endAngle = headingDeg + (fovDeg / 2);
+  const step = Math.max(1, fovDeg / 16); // 16 arc segments
+
+  for (let a = startAngle; a <= endAngle; a += step) {
+    const bearingRad = (a * Math.PI) / 180;
+    const lat1Rad = (lat * Math.PI) / 180;
+    const lng1Rad = (lng * Math.PI) / 180;
+    const dOverR = rangeMeters / R;
+
+    const lat2Rad = Math.asin(
+      Math.sin(lat1Rad) * Math.cos(dOverR) +
+      Math.cos(lat1Rad) * Math.sin(dOverR) * Math.cos(bearingRad)
+    );
+    const lng2Rad = lng1Rad + Math.atan2(
+      Math.sin(bearingRad) * Math.sin(dOverR) * Math.cos(lat1Rad),
+      Math.cos(dOverR) - Math.sin(lat1Rad) * Math.sin(lat2Rad)
+    );
+
+    points.push([
+      (lat2Rad * 180) / Math.PI,
+      (lng2Rad * 180) / Math.PI
+    ]);
+  }
+  
+  points.push([lat, lng]); // Close polygon back at apex
+  return points;
+}
+
 export default function GISMap({ cameras = [], incidents = [], onNavigateToCameras, onRefresh }) {
+  const mapContainerRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const layerGroupRef = useRef(null);
+  const tileLayerRef = useRef(null);
+
   const [selectedCam, setSelectedCam] = useState(null);
   const [targetPoint, setTargetPoint] = useState(null);
   const [showFOV, setShowFOV] = useState(true);
-  const [showIncidents, setShowIncidents] = useState(true);
+  const [baseMapLayer, setBaseMapLayer] = useState('osm'); // 'osm' | 'satellite'
 
-  // Operational Area Center state
+  // Operational Area Center
   const [opArea, setOpArea] = useState({
     configured: false,
-    lat: 28.6139,
-    lng: 77.2090,
-    name: '',
+    lat: 26.604665,
+    lng: 84.935982,
+    name: 'Designated Operational Sector',
     radiusMeters: 1000
   });
-  const [showAreaSetupModal, setShowAreaSetupModal] = useState(false);
-  const [manualAreaName, setManualAreaName] = useState('');
-  const [manualAreaLat, setManualAreaLat] = useState('');
-  const [manualAreaLng, setManualAreaLng] = useState('');
   const [detectingGps, setDetectingGps] = useState(false);
 
-  // Spatial Calibration & Placement Mode
-  const [placementMode, setPlacementMode] = useState(null); // 'reposition' | 'add_new' | null
-  const [selectedCamToPosition, setSelectedCamToPosition] = useState('');
-  const [tempCoords, setTempCoords] = useState(null); // { x, y, lat, lng }
+  // Calibration / Placement Mode
+  const [calibrationCamId, setCalibrationCamId] = useState(null);
+  const [tempCoords, setTempCoords] = useState(null); // { lat, lng }
   const [tempDirection, setTempDirection] = useState(0);
   const [tempFov, setTempFov] = useState(60);
   const [tempRange, setTempRange] = useState(150);
   const [savingPosition, setSavingPosition] = useState(false);
-
-  // Add camera modal state
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newCamName, setNewCamName] = useState('');
-  const [newCamRtsp, setNewCamRtsp] = useState('0');
-  const [newCamSector, setNewCamSector] = useState('Sector A');
 
   // Load operational area from system settings
   useEffect(() => {
@@ -68,17 +98,236 @@ export default function GISMap({ cameras = [], incidents = [], onNavigateToCamer
             configured: true,
             lat: cfg.operational_area_lat,
             lng: cfg.operational_area_lng,
-            name: cfg.operational_area_name || 'Designated Facility',
+            name: cfg.operational_area_name || 'Designated Operational Sector',
             radiusMeters: cfg.operational_area_radius || 1000
           });
-        } else {
-          setOpArea(prev => ({ ...prev, configured: false }));
         }
       })
       .catch(() => {});
   }, []);
 
-  // Handle GPS detection
+  // Initialize Leaflet Map
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+    if (mapInstanceRef.current) return; // Already initialized
+
+    const initialCenter = [opArea.lat, opArea.lng];
+    const map = L.map(mapContainerRef.current, {
+      center: initialCenter,
+      zoom: 15,
+      zoomControl: false,
+      attributionControl: true
+    });
+
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    const tileUrl = baseMapLayer === 'satellite'
+      ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+      : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+    const tileLayer = L.tileLayer(tileUrl, {
+      attribution: baseMapLayer === 'satellite'
+        ? 'Tiles &copy; Esri &mdash; Source: Esri'
+        : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
+    }).addTo(map);
+
+    tileLayerRef.current = tileLayer;
+
+    // Feature layer group for markers, cones, lines
+    const layerGroup = L.layerGroup().addTo(map);
+    layerGroupRef.current = layerGroup;
+    mapInstanceRef.current = map;
+
+    // Click handler on map
+    map.on('click', (e) => {
+      const { lat, lng } = e.latlng;
+      setTempCoords(prev => {
+        if (calibrationCamId) {
+          return { lat: parseFloat(lat.toFixed(6)), lng: parseFloat(lng.toFixed(6)) };
+        }
+        return prev;
+      });
+
+      if (!calibrationCamId) {
+        setTargetPoint({
+          lat: parseFloat(lat.toFixed(6)),
+          lng: parseFloat(lng.toFixed(6))
+        });
+      }
+    });
+
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+    };
+  }, []);
+
+  // Switch Base Tile Layer
+  useEffect(() => {
+    if (!mapInstanceRef.current || !tileLayerRef.current) return;
+    mapInstanceRef.current.removeLayer(tileLayerRef.current);
+
+    const tileUrl = baseMapLayer === 'satellite'
+      ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+      : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+    const newLayer = L.tileLayer(tileUrl, {
+      attribution: baseMapLayer === 'satellite' ? 'Tiles &copy; Esri' : '&copy; OpenStreetMap contributors',
+      maxZoom: 19
+    }).addTo(mapInstanceRef.current);
+
+    tileLayerRef.current = newLayer;
+  }, [baseMapLayer]);
+
+  // Center map when opArea updates
+  useEffect(() => {
+    if (mapInstanceRef.current && opArea.configured) {
+      mapInstanceRef.current.setView([opArea.lat, opArea.lng], 15);
+    }
+  }, [opArea.configured, opArea.lat, opArea.lng]);
+
+  // Render Markers, Cones, and Triangulation Target
+  useEffect(() => {
+    if (!mapInstanceRef.current || !layerGroupRef.current) return;
+    const group = layerGroupRef.current;
+    group.clearLayers();
+
+    // 1. Draw Operational Center Circle
+    if (opArea.configured) {
+      L.circle([opArea.lat, opArea.lng], {
+        radius: opArea.radiusMeters || 1000,
+        color: '#3B82F6',
+        weight: 1,
+        dashArray: '4, 8',
+        fillColor: '#3B82F6',
+        fillOpacity: 0.05
+      }).addTo(group);
+
+      const centerIcon = L.divIcon({
+        className: 'op-center-icon',
+        html: `<div class="flex items-center justify-center w-5 h-5 rounded-full bg-blue-600/80 border-2 border-white shadow-md text-[9px] font-bold text-white">OP</div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+      });
+      L.marker([opArea.lat, opArea.lng], { icon: centerIcon })
+        .bindTooltip(`<b>${opArea.name}</b><br/>Sector Command Center`, { direction: 'top' })
+        .addTo(group);
+    }
+
+    // 2. Draw Camera Nodes & FOV Cones
+    cameras.forEach(cam => {
+      const isCalibrating = calibrationCamId === cam.camera_id;
+      const lat = isCalibrating && tempCoords ? tempCoords.lat : cam.latitude;
+      const lng = isCalibrating && tempCoords ? tempCoords.lng : cam.longitude;
+      const direction = isCalibrating ? tempDirection : (cam.direction || 0);
+      const fov = isCalibrating ? tempFov : (cam.fov_degrees || 60);
+      const range = isCalibrating ? tempRange : (cam.range_meters || 150);
+
+      if (lat == null || lng == null) return; // Skip unconfigured cameras from map canvas
+
+      const isSelected = selectedCam?.camera_id === cam.camera_id;
+      const isOnline = cam.status === 'ONLINE';
+
+      // FOV Sector Cone Polygon
+      if (showFOV) {
+        const polyCoords = calculateFovPolygon(lat, lng, direction, fov, range);
+        const coneColor = isCalibrating ? '#F59E0B' : (isSelected ? '#3B82F6' : '#10B981');
+        
+        L.polygon(polyCoords, {
+          color: coneColor,
+          weight: 1.5,
+          fillColor: coneColor,
+          fillOpacity: isCalibrating ? 0.35 : (isSelected ? 0.25 : 0.15)
+        }).addTo(group);
+      }
+
+      // Camera Marker Icon
+      const markerColor = isCalibrating 
+        ? 'border-amber-400 bg-amber-950 text-amber-300 ring-2 ring-amber-400'
+        : (isSelected 
+            ? 'border-blue-400 bg-blue-950 text-blue-300 ring-2 ring-blue-400' 
+            : (isOnline ? 'border-emerald-500 bg-slate-900 text-emerald-400' : 'border-rose-500 bg-slate-900 text-rose-400'));
+
+      const cameraIcon = L.divIcon({
+        className: 'custom-camera-node',
+        html: `
+          <div class="relative flex items-center justify-center w-8 h-8 rounded-full border-2 ${markerColor} shadow-xl cursor-pointer transition-transform hover:scale-110">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
+              <circle cx="12" cy="13" r="3"/>
+            </svg>
+            <div class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}"></div>
+          </div>
+        `,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -18]
+      });
+
+      const marker = L.marker([lat, lng], { icon: cameraIcon })
+        .addTo(group);
+
+      marker.on('click', () => {
+        setSelectedCam(cam);
+      });
+
+      marker.bindTooltip(`
+        <div class="text-xs font-mono">
+          <div class="font-bold text-slate-100">${cam.name}</div>
+          <div class="text-[10px] text-slate-400">${cam.sector || 'Unassigned'} • Heading: ${direction}°</div>
+          <div class="text-[10px] ${isOnline ? 'text-emerald-400' : 'text-rose-400'} font-semibold">${cam.status}</div>
+        </div>
+      `, { direction: 'top', offset: [0, -14], className: 'tactical-map-tooltip' });
+    });
+
+    // 3. Draw Target Point & Triangulation Line
+    if (targetPoint) {
+      const targetIcon = L.divIcon({
+        className: 'target-marker-icon',
+        html: `
+          <div class="flex items-center justify-center w-7 h-7 rounded-full bg-rose-600/90 border-2 border-white shadow-2xl text-white animate-bounce">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="22" y1="12" x2="18" y2="12"/>
+              <line x1="6" y1="12" x2="2" y2="12"/>
+              <line x1="12" y1="6" x2="12" y2="2"/>
+              <line x1="12" y1="22" x2="12" y2="18"/>
+            </svg>
+          </div>
+        `,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+      });
+
+      L.marker([targetPoint.lat, targetPoint.lng], { icon: targetIcon })
+        .bindPopup(`<b>Tactical Target Point</b><br/>Lat: ${targetPoint.lat}<br/>Lng: ${targetPoint.lng}`)
+        .addTo(group);
+
+      let minDistance = Infinity;
+      let nearestCam = null;
+
+      cameras.forEach(c => {
+        if (c.latitude != null && c.longitude != null) {
+          const d = mapInstanceRef.current.distance([targetPoint.lat, targetPoint.lng], [c.latitude, c.longitude]);
+          if (d < minDistance) {
+            minDistance = d;
+            nearestCam = c;
+          }
+        }
+      });
+
+      if (nearestCam) {
+        L.polyline([[targetPoint.lat, targetPoint.lng], [nearestCam.latitude, nearestCam.longitude]], {
+          color: '#EF4444',
+          weight: 2,
+          dashArray: '6, 6'
+        }).addTo(group);
+      }
+    }
+  }, [cameras, showFOV, selectedCam, calibrationCamId, tempCoords, tempDirection, tempFov, tempRange, targetPoint, opArea]);
+
+  // Live GPS Centering
   const handleDetectDeviceLocation = () => {
     if (!navigator.geolocation) {
       alert("Geolocation is not supported by your browser or device.");
@@ -104,7 +353,9 @@ export default function GISMap({ cameras = [], incidents = [], onNavigateToCamer
             name,
             radiusMeters: 1000
           });
-          setShowAreaSetupModal(false);
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.flyTo([lat, lng], 16, { duration: 1.5 });
+          }
         } catch (err) {
           alert("Failed to save operational center: " + err.message);
         } finally {
@@ -113,826 +364,410 @@ export default function GISMap({ cameras = [], incidents = [], onNavigateToCamer
       },
       (err) => {
         setDetectingGps(false);
-        alert(`Could not acquire GPS location (${err.message}). Please enter coordinates manually.`);
+        alert(`Could not acquire GPS location (${err.message}).`);
       },
       { timeout: 10000, enableHighAccuracy: true }
     );
   };
 
-  const handleSaveManualLocation = async (e) => {
-    e.preventDefault();
-    const lat = parseFloat(manualAreaLat);
-    const lng = parseFloat(manualAreaLng);
-    if (isNaN(lat) || isNaN(lng)) {
-      alert("Please provide valid numerical coordinates for Latitude and Longitude.");
-      return;
+  // Start Calibration Mode for a camera
+  const handleStartCalibration = (cam) => {
+    setCalibrationCamId(cam.camera_id);
+    setSelectedCam(cam);
+    const lat = cam.latitude != null ? cam.latitude : opArea.lat;
+    const lng = cam.longitude != null ? cam.longitude : opArea.lng;
+    setTempCoords({ lat, lng });
+    setTempDirection(cam.direction != null ? cam.direction : 0);
+    setTempFov(cam.fov_degrees || 60);
+    setTempRange(cam.range_meters || 150);
+
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.setView([lat, lng], 16);
     }
-    const name = manualAreaName.trim() || `Operational Center (${lat.toFixed(2)}, ${lng.toFixed(2)})`;
+  };
+
+  // Save Spatial Calibration to Backend SQLite
+  const handleSaveCalibration = async () => {
+    if (!calibrationCamId || !tempCoords) return;
+    setSavingPosition(true);
     try {
-      await updateSystemSettings({
-        operational_area_lat: lat,
-        operational_area_lng: lng,
-        operational_area_name: name,
-        operational_area_radius: 1000.0
+      await updateCameraConfig(calibrationCamId, {
+        latitude: tempCoords.lat,
+        longitude: tempCoords.lng,
+        direction: tempDirection,
+        fov_degrees: tempFov,
+        range_meters: tempRange
       });
-      setOpArea({
-        configured: true,
-        lat,
-        lng,
-        name,
-        radiusMeters: 1000
-      });
-      setShowAreaSetupModal(false);
+      setCalibrationCamId(null);
+      if (onRefresh) onRefresh();
     } catch (err) {
-      alert("Failed to save operational center: " + err.message);
+      alert("Failed to save camera position: " + err.message);
+    } finally {
+      setSavingPosition(false);
     }
   };
 
-  // Convert GPS (lat, lng) to canvas (x, y) relative to opArea
-  // Canvas is 1000x500 with center at (500, 250) representing radiusMeters
-  const gpsToCanvas = (lat, lng) => {
-    const latDiff = lat - opArea.lat;
-    const lngDiff = lng - opArea.lng;
-    // 1 deg lat ≈ 111,320m
-    const metersY = latDiff * 111320;
-    // 1 deg lng ≈ 111,320m * cos(lat)
-    const metersX = lngDiff * 111320 * Math.cos((opArea.lat * Math.PI) / 180);
-    
-    // Scale: radiusMeters maps to 220px from center
-    const scale = 220 / (opArea.radiusMeters || 1000);
-    const x = Math.round(500 + metersX * scale);
-    const y = Math.round(250 - metersY * scale);
-    return { x: Math.max(30, Math.min(970, x)), y: Math.max(30, Math.min(470, y)) };
-  };
-
-  // Convert canvas (x, y) back to GPS (lat, lng)
-  const canvasToGps = (x, y) => {
-    const scale = 220 / (opArea.radiusMeters || 1000);
-    const metersX = (x - 500) / scale;
-    const metersY = (250 - y) / scale;
-
-    const latDiff = metersY / 111320;
-    const lngDiff = metersX / (111320 * Math.cos((opArea.lat * Math.PI) / 180));
-
-    return {
-      lat: parseFloat((opArea.lat + latDiff).toFixed(6)),
-      lng: parseFloat((opArea.lng + lngDiff).toFixed(6))
-    };
-  };
-
-  // Map cameras to canvas positions
-  const cameraNodes = useMemo(() => {
-    return cameras.map((cam, idx) => {
-      const hasCoords = cam.latitude != null && cam.longitude != null;
-      let mapX, mapY;
-      if (hasCoords) {
-        const c = gpsToCanvas(cam.latitude, cam.longitude);
-        mapX = c.x;
-        mapY = c.y;
-      } else {
-        // Deterministic unconfigured spread around perimeter
-        const total = Math.max(cameras.length, 1);
-        const angle = (idx / total) * 2 * Math.PI;
-        mapX = Math.round(500 + 180 * Math.cos(angle));
-        mapY = Math.round(250 + 120 * Math.sin(angle));
-      }
-
-      return {
-        ...cam,
-        hasCoords,
-        mapX,
-        mapY,
-        direction: cam.direction != null ? cam.direction : (idx * 60) % 360,
-        fov_degrees: cam.fov_degrees || 60,
-        range_meters: cam.range_meters || 150
-      };
-    });
-  }, [cameras, opArea]);
-
-  // Nearest camera triangulation
-  const nearestCameraInfo = useMemo(() => {
-    if (!targetPoint || cameraNodes.length === 0) return null;
+  // Distance calculation from target point
+  const nearestDistanceInfo = useMemo(() => {
+    if (!targetPoint || !mapInstanceRef.current) return null;
     let minD = Infinity;
     let nearest = null;
 
-    cameraNodes.forEach(c => {
-      const d = Math.hypot(c.mapX - targetPoint.x, c.mapY - targetPoint.y);
-      if (d < minD) {
-        minD = d;
-        nearest = c;
+    cameras.forEach(c => {
+      if (c.latitude != null && c.longitude != null) {
+        const d = mapInstanceRef.current.distance([targetPoint.lat, targetPoint.lng], [c.latitude, c.longitude]);
+        if (d < minD) {
+          minD = d;
+          nearest = c;
+        }
       }
     });
 
-    const metersPerPx = (opArea.radiusMeters || 1000) / 220;
-    const meters = Math.round(minD * metersPerPx);
-
+    if (!nearest) return null;
     return {
       camera: nearest,
-      distanceMeters: meters,
-      targetX: targetPoint.x,
-      targetY: targetPoint.y
+      meters: Math.round(minD)
     };
-  }, [targetPoint, cameraNodes, opArea]);
+  }, [targetPoint, cameras]);
 
-  // Click on map
-  const handleMapClick = (e) => {
-    const svg = e.currentTarget;
-    const rect = svg.getBoundingClientRect();
-    const x = Math.round(((e.clientX - rect.left) / rect.width) * 1000);
-    const y = Math.round(((e.clientY - rect.top) / rect.height) * 500);
-    const coords = canvasToGps(x, y);
-
-    if (placementMode === 'reposition') {
-      setTempCoords({ x, y, lat: coords.lat, lng: coords.lng });
-    } else if (placementMode === 'add_new') {
-      setTempCoords({ x, y, lat: coords.lat, lng: coords.lng });
-      setShowAddModal(true);
-    } else {
-      setTargetPoint({ x, y, lat: coords.lat, lng: coords.lng });
-    }
-  };
-
-  // Save repositioned camera
-  const handleSaveReposition = async () => {
-    if (!selectedCamToPosition || !tempCoords) return;
-    setSavingPosition(true);
-    try {
-      await updateCameraConfig(selectedCamToPosition, {
-        latitude: tempCoords.lat,
-        longitude: tempCoords.lng,
-        direction: tempDirection,
-        fov_degrees: tempFov,
-        range_meters: tempRange
-      });
-      setPlacementMode(null);
-      setTempCoords(null);
-      if (onRefresh) onRefresh();
-    } catch (err) {
-      alert("Failed to save camera coordinates: " + err.message);
-    } finally {
-      setSavingPosition(false);
-    }
-  };
-
-  // Add new camera at clicked coordinates
-  const handleCreateCameraAtLocation = async (e) => {
-    e.preventDefault();
-    if (!newCamName.trim() || !tempCoords) return;
-    setSavingPosition(true);
-    try {
-      await createCamera({
-        name: newCamName.trim(),
-        rtsp_url: newCamRtsp.trim() || '0',
-        sector: newCamSector.trim() || 'Sector Alpha',
-        latitude: tempCoords.lat,
-        longitude: tempCoords.lng,
-        direction: tempDirection,
-        fov_degrees: tempFov,
-        range_meters: tempRange
-      });
-      setShowAddModal(false);
-      setPlacementMode(null);
-      setTempCoords(null);
-      setNewCamName('');
-      if (onRefresh) onRefresh();
-    } catch (err) {
-      alert("Failed to create camera at location: " + err.message);
-    } finally {
-      setSavingPosition(false);
-    }
-  };
-
-  // Compute SVG polygon for FOV cone
-  const getFovPoints = (cx, cy, direction, fov, rangeMeters) => {
-    const scale = 220 / (opArea.radiusMeters || 1000);
-    const rangePx = Math.max(35, Math.min(180, rangeMeters * scale));
-    const rad = (deg) => (deg * Math.PI) / 180;
-    const startAngle = rad(direction - 90 - fov / 2);
-    const endAngle = rad(direction - 90 + fov / 2);
-    
-    const x1 = cx + rangePx * Math.cos(startAngle);
-    const y1 = cy + rangePx * Math.sin(startAngle);
-    const x2 = cx + rangePx * Math.cos(endAngle);
-    const y2 = cy + rangePx * Math.sin(endAngle);
-
-    return `${cx},${cy} ${x1},${y1} ${x2},${y2}`;
-  };
+  const unconfiguredCameras = useMemo(() => {
+    return cameras.filter(c => c.latitude == null || c.longitude == null);
+  }, [cameras]);
 
   return (
-    <div className="p-6 space-y-5 max-w-7xl mx-auto font-sans">
-      {/* Header Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
-        <div>
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-              <Map className="w-4 h-4" />
-            </div>
-            <h2 className="text-base font-bold text-slate-100 tracking-tight font-mono">
-              Geospatial Operations & Sensor Grid
-            </h2>
-            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300 border border-slate-700">
-              COORDINATE GRID
+    <div className="flex flex-col h-[calc(100vh-5rem)] bg-slate-950 text-slate-100 overflow-hidden">
+      {/* Top Tactical Command Bar */}
+      <div className="flex flex-wrap items-center justify-between px-4 py-2.5 bg-slate-900 border-b border-slate-800 gap-3 text-xs z-10">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 font-mono font-bold tracking-wider text-slate-200">
+            <MapIcon className="w-4 h-4 text-emerald-400" />
+            <span>GIS TACTICAL MAP</span>
+            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-800 text-emerald-300">
+              LEAFLET OSM
             </span>
           </div>
-          <div className="text-xs text-slate-400 mt-1 flex items-center gap-2">
-            {opArea.configured ? (
-              <span className="text-emerald-400 font-mono flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5" />
-                Operational Center: <strong className="text-white">{opArea.name}</strong> ({opArea.lat.toFixed(4)}° N, {opArea.lng.toFixed(4)}° E)
-              </span>
-            ) : (
-              <span className="text-amber-400 font-mono flex items-center gap-1">
-                <AlertTriangle className="w-3.5 h-3.5" />
-                Operational center unconfigured — using default reference coordinates.
-              </span>
-            )}
+          <div className="hidden md:flex items-center gap-2 text-slate-400 font-mono">
+            <MapPin className="w-3.5 h-3.5 text-blue-400" />
+            <span>{opArea.name} ({opArea.lat.toFixed(4)}, {opArea.lng.toFixed(4)})</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Tile Layer Toggle */}
+          <button
+            onClick={() => setBaseMapLayer(prev => prev === 'osm' ? 'satellite' : 'osm')}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-mono transition-colors"
+            title="Toggle OpenStreetMap / Esri Satellite View"
+          >
+            <Layers className="w-3.5 h-3.5 text-amber-400" />
+            <span>{baseMapLayer === 'osm' ? 'Satellite' : 'OSM Street'}</span>
+          </button>
+
+          {/* FOV Toggle */}
+          <button
+            onClick={() => setShowFOV(!showFOV)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded font-mono border transition-colors ${
+              showFOV 
+                ? 'bg-blue-950/60 border-blue-700 text-blue-300' 
+                : 'bg-slate-800 border-slate-700 text-slate-400'
+            }`}
+          >
+            {showFOV ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+            <span>FOV Cones</span>
+          </button>
+
+          {/* GPS Auto Center */}
+          <button
+            onClick={handleDetectDeviceLocation}
+            disabled={detectingGps}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-mono transition-colors"
+            title="Center map on device GPS coordinates"
+          >
+            <LocateFixed className={`w-3.5 h-3.5 text-emerald-400 ${detectingGps ? 'animate-spin' : ''}`} />
+            <span>{detectingGps ? 'Locating...' : 'My GPS'}</span>
+          </button>
+
+          {/* Target Clear */}
+          {targetPoint && (
             <button
-              onClick={() => setShowAreaSetupModal(true)}
-              className="text-[11px] underline text-cyan-400 hover:text-cyan-300 ml-2"
+              onClick={() => setTargetPoint(null)}
+              className="flex items-center gap-1 px-2 py-1 rounded bg-rose-950/60 border border-rose-800 text-rose-300 font-mono hover:bg-rose-900/60"
             >
-              {opArea.configured ? 'Change Center' : 'Configure Location'}
+              <X className="w-3.5 h-3.5" />
+              <span>Clear Target</span>
             </button>
-          </div>
-        </div>
-
-        {/* Toolbar: Placement & Add Camera */}
-        <div className="flex items-center space-x-2 flex-wrap gap-y-2 shrink-0 font-mono text-xs">
-          <button
-            onClick={() => {
-              if (placementMode === 'reposition') {
-                setPlacementMode(null);
-                setTempCoords(null);
-              } else {
-                setPlacementMode('reposition');
-                if (cameraNodes.length > 0 && !selectedCamToPosition) {
-                  setSelectedCamToPosition(cameraNodes[0].camera_id);
-                  setTempDirection(cameraNodes[0].direction || 0);
-                  setTempFov(cameraNodes[0].fov_degrees || 60);
-                  setTempRange(cameraNodes[0].range_meters || 150);
-                }
-              }
-            }}
-            className={`px-3 py-1.5 rounded border transition flex items-center gap-1.5 ${
-              placementMode === 'reposition'
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold'
-                : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            <span>{placementMode === 'reposition' ? 'Cancel Reposition' : 'Position Camera'}</span>
-          </button>
-
-          <button
-            onClick={() => {
-              if (placementMode === 'add_new') {
-                setPlacementMode(null);
-                setTempCoords(null);
-              } else {
-                setPlacementMode('add_new');
-              }
-            }}
-            className={`px-3 py-1.5 rounded border transition flex items-center gap-1.5 ${
-              placementMode === 'add_new'
-                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 font-bold'
-                : 'bg-emerald-600 hover:bg-emerald-500 text-white border-transparent'
-            }`}
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>{placementMode === 'add_new' ? 'Click Map to Place' : 'Add Camera on Map'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Reposition Toolbar Banner */}
-      {placementMode === 'reposition' && (
-        <div className="bg-slate-900 border border-amber-500/40 rounded-lg p-3.5 shadow-md space-y-3 font-mono text-xs text-slate-300">
-          <div className="flex items-center justify-between">
-            <span className="font-bold text-amber-400 flex items-center gap-1.5">
-              <Sliders className="w-4 h-4" /> Position & Orient Camera
-            </span>
-            <span className="text-[11px] text-slate-400 font-sans">
-              Click anywhere on the map grid to set target coordinates.
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-center">
-            <div>
-              <label className="block text-[11px] text-slate-400 mb-1">Target Camera:</label>
-              <select
-                value={selectedCamToPosition}
-                onChange={e => {
-                  const cid = e.target.value;
-                  setSelectedCamToPosition(cid);
-                  const found = cameraNodes.find(c => c.camera_id === cid);
-                  if (found) {
-                    setTempDirection(found.direction || 0);
-                    setTempFov(found.fov_degrees || 60);
-                    setTempRange(found.range_meters || 150);
-                    setTempCoords(found.hasCoords ? { x: found.mapX, y: found.mapY, lat: found.latitude, lng: found.longitude } : null);
-                  }
-                }}
-                className="w-full bg-slate-950 border border-slate-800 p-1.5 rounded text-white"
-              >
-                {cameraNodes.map(c => (
-                  <option key={c.camera_id} value={c.camera_id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <div className="flex justify-between text-[11px] text-slate-400 mb-1">
-                <span>Azimuth Angle:</span>
-                <span className="text-cyan-400 font-bold">{tempDirection}°</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="360"
-                step="5"
-                value={tempDirection}
-                onChange={e => setTempDirection(parseInt(e.target.value))}
-                className="w-full accent-cyan-500 h-1 bg-slate-800 rounded cursor-pointer"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between text-[11px] text-slate-400 mb-1">
-                <span>Aperture FOV:</span>
-                <span className="text-emerald-400 font-bold">{tempFov}°</span>
-              </div>
-              <input
-                type="range"
-                min="30"
-                max="120"
-                step="5"
-                value={tempFov}
-                onChange={e => setTempFov(parseInt(e.target.value))}
-                className="w-full accent-emerald-500 h-1 bg-slate-800 rounded cursor-pointer"
-              />
-            </div>
-
-            <div className="pt-2 sm:pt-0">
-              <button
-                type="button"
-                onClick={handleSaveReposition}
-                disabled={savingPosition || !tempCoords}
-                className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded font-bold transition flex items-center justify-center gap-1.5"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>{savingPosition ? 'Saving...' : (tempCoords ? 'Save Coordinates' : 'Click Map to Place')}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Main Vector Grid */}
-      <div className="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden shadow-2xl relative">
-        {/* Layer Toggles */}
-        <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5 bg-slate-900/90 backdrop-blur-md border border-slate-800 p-1.5 rounded-lg shadow-lg">
-          <button
-            onClick={() => setShowFOV(prev => !prev)}
-            className={`px-2.5 py-1 rounded text-[11px] font-mono transition ${
-              showFOV ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            FOV Cones {showFOV ? 'ON' : 'OFF'}
-          </button>
-          <button
-            onClick={() => setShowIncidents(prev => !prev)}
-            className={`px-2.5 py-1 rounded text-[11px] font-mono transition ${
-              showIncidents ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Threat Pins {showIncidents ? 'ON' : 'OFF'}
-          </button>
-        </div>
-
-        {/* Nearest Camera / Telemetry overlay */}
-        <div className="absolute top-4 left-4 z-10 space-y-2 max-w-sm pointer-events-none">
-          <div className="bg-slate-900/90 backdrop-blur-md border border-slate-800 p-3 rounded-lg shadow-lg text-xs font-mono text-slate-300 pointer-events-auto">
-            <div className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1.5">
-              <Crosshair className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Concentric Metric Scale: 200m / Ring</span>
-            </div>
-            <div className="mt-1 text-slate-200">
-              {placementMode ? 'Click on map grid to place sensor.' : 'Click anywhere on grid to locate nearest camera.'}
-            </div>
-          </div>
-
-          {nearestCameraInfo && !placementMode && (
-            <div className="bg-slate-900/95 backdrop-blur-md border border-cyan-500/50 p-3.5 rounded-lg shadow-2xl text-xs font-mono space-y-1.5 pointer-events-auto animate-fade-in">
-              <div className="flex items-center justify-between text-cyan-400 font-bold">
-                <span>NEAREST SURVEILLANCE SENSOR:</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/40">
-                  {nearestCameraInfo.camera?.camera_id?.slice(0, 8)}
-                </span>
-              </div>
-              <div className="text-white font-semibold">{nearestCameraInfo.camera?.name}</div>
-              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400 pt-1 border-t border-slate-800">
-                <div>Distance: <span className="text-emerald-400 font-bold">{nearestCameraInfo.distanceMeters}m</span></div>
-                <div>Transit ETA: <span className="text-slate-500 italic">Travel ETA unavailable</span></div>
-              </div>
-              <div className="text-[10px] text-slate-500 italic pt-0.5">
-                (Terrain & transit velocity model not configured)
-              </div>
-              {onNavigateToCameras && (
-                <button
-                  onClick={() => onNavigateToCameras(nearestCameraInfo.camera?.camera_id)}
-                  className="w-full mt-2 py-1 bg-cyan-600/80 hover:bg-cyan-600 text-white rounded text-[11px] font-bold flex items-center justify-center gap-1 transition"
-                >
-                  <Eye className="w-3 h-3" />
-                  <span>Switch to Camera Stream</span>
-                </button>
-              )}
-            </div>
           )}
         </div>
+      </div>
 
-        {/* Clean Cartographic SVG Canvas */}
-        <div className="relative w-full aspect-[2/1] bg-[#070b14] cursor-crosshair select-none">
-          <svg
-            viewBox="0 0 1000 500"
-            className="w-full h-full"
-            onClick={handleMapClick}
-          >
-            <defs>
-              {/* Tactical Grid Pattern */}
-              <pattern id="cleanGrid" width="50" height="50" patternUnits="userSpaceOnUse">
-                <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#1e293b" strokeWidth="0.5" strokeOpacity="0.5" />
-              </pattern>
+      {/* Main Map Body + Side Panels */}
+      <div className="relative flex-1 w-full h-full overflow-hidden flex">
+        {/* Leaflet Map Canvas Container */}
+        <div ref={mapContainerRef} className="flex-1 w-full h-full z-0 bg-slate-900" />
 
-              {/* FOV Radial Gradient */}
-              <radialGradient id="fovGrad" cx="0%" cy="50%" r="100%">
-                <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.4" />
-                <stop offset="70%" stopColor="#38bdf8" stopOpacity="0.1" />
-                <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.0" />
-              </radialGradient>
-            </defs>
-
-            {/* Background Grid */}
-            <rect width="1000" height="500" fill="url(#cleanGrid)" />
-
-            {/* Concentric Metric Range Rings from Center (500, 250) */}
-            <circle cx="500" cy="250" r="55" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" />
-            <circle cx="500" cy="250" r="110" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" />
-            <circle cx="500" cy="250" r="165" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="3 3" />
-            <circle cx="500" cy="250" r="220" fill="none" stroke="#475569" strokeWidth="1.5" />
-
-            {/* Range Labels */}
-            <text x="505" y="195" fill="#64748b" fontSize="8" fontFamily="monospace">250m</text>
-            <text x="505" y="140" fill="#64748b" fontSize="8" fontFamily="monospace">500m</text>
-            <text x="505" y="85" fill="#64748b" fontSize="8" fontFamily="monospace">750m</text>
-            <text x="505" y="30" fill="#64748b" fontSize="8" fontFamily="monospace">1000m</text>
-
-            {/* Center Axis Crosshairs */}
-            <line x1="500" y1="10" x2="500" y2="490" stroke="#1e293b" strokeWidth="1" />
-            <line x1="10" y1="250" x2="990" y2="250" stroke="#1e293b" strokeWidth="1" />
-            <circle cx="500" cy="250" r="3" fill="#38bdf8" />
-            <text x="510" y="260" fill="#38bdf8" fontSize="9" fontFamily="monospace" fontWeight="bold">
-              CENTER ({opArea.lat.toFixed(4)}, {opArea.lng.toFixed(4)})
-            </text>
-
-            {/* Compass Rose (Top Right) */}
-            <g transform="translate(940, 60)">
-              <circle r="20" fill="#0f172a" stroke="#334155" strokeWidth="1" />
-              <polygon points="0,-16 4,0 0,-4 -4,0" fill="#ef4444" />
-              <polygon points="0,16 4,0 0,4 -4,0" fill="#94a3b8" />
-              <text x="0" y="-19" fill="#ef4444" fontSize="8" fontFamily="monospace" fontWeight="bold" textAnchor="middle">N</text>
-              <text x="0" y="25" fill="#64748b" fontSize="8" fontFamily="monospace" textAnchor="middle">S</text>
-              <text x="25" y="3" fill="#64748b" fontSize="8" fontFamily="monospace" textAnchor="middle">E</text>
-              <text x="-25" y="3" fill="#64748b" fontSize="8" fontFamily="monospace" textAnchor="middle">W</text>
-            </g>
-
-            {/* Camera Nodes */}
-            {cameraNodes.map((cam) => {
-              const isSelected = selectedCam?.camera_id === cam.camera_id;
-              const isBeingRepositioned = placementMode === 'reposition' && selectedCamToPosition === cam.camera_id;
-              const posX = isBeingRepositioned && tempCoords ? tempCoords.x : cam.mapX;
-              const posY = isBeingRepositioned && tempCoords ? tempCoords.y : cam.mapY;
-              const dir = isBeingRepositioned ? tempDirection : cam.direction;
-              const fov = isBeingRepositioned ? tempFov : cam.fov_degrees;
-              const range = isBeingRepositioned ? tempRange : cam.range_meters;
-
-              return (
-                <g key={cam.camera_id} className="cursor-pointer" onClick={(e) => { e.stopPropagation(); setSelectedCam(cam); }}>
-                  {/* Directional FOV Cone */}
-                  {showFOV && (
-                    <polygon
-                      points={getFovPoints(posX, posY, dir, fov, range)}
-                      fill="url(#fovGrad)"
-                      stroke="#38bdf8"
-                      strokeWidth="1"
-                      strokeOpacity="0.4"
-                    />
-                  )}
-
-                  {/* Camera Marker */}
-                  <circle
-                    cx={posX}
-                    cy={posY}
-                    r={isSelected || isBeingRepositioned ? 10 : 7}
-                    fill={isBeingRepositioned ? '#f59e0b' : (cam.status === 'ONLINE' ? '#10b981' : '#64748b')}
-                    stroke="#ffffff"
-                    strokeWidth="2"
-                    filter="drop-shadow(0 0 6px rgba(16,185,129,0.7))"
-                  />
-
-                  {/* Azimuth Direction Needle */}
-                  <line
-                    x1={posX}
-                    y1={posY}
-                    x2={posX + 15 * Math.cos(((dir - 90) * Math.PI) / 180)}
-                    y2={posY + 15 * Math.sin(((dir - 90) * Math.PI) / 180)}
-                    stroke="#ffffff"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-
-                  {/* Label */}
-                  <text
-                    x={posX}
-                    y={posY + 18}
-                    fill="#e2e8f0"
-                    fontSize="9"
-                    fontFamily="monospace"
-                    fontWeight="bold"
-                    textAnchor="middle"
-                  >
-                    {cam.name}
-                  </text>
-                  <text
-                    x={posX}
-                    y={posY + 27}
-                    fill={cam.hasCoords ? '#10b981' : '#94a3b8'}
-                    fontSize="7.5"
-                    fontFamily="monospace"
-                    textAnchor="middle"
-                  >
-                    {cam.hasCoords ? `${cam.latitude?.toFixed(3)}, ${cam.longitude?.toFixed(3)}` : 'GRID ESTIMATE'}
-                  </text>
-                </g>
-              );
-            })}
-
-            {/* Incidents Threat Pins */}
-            {showIncidents && incidents.slice(0, 4).map((inc, i) => {
-              const pinX = 280 + (i * 150);
-              const pinY = 220 + (i % 2 === 0 ? -25 : 25);
-              return (
-                <g key={inc.event_id || i} transform={`translate(${pinX}, ${pinY})`}>
-                  <circle r="12" fill="#ef4444" fillOpacity="0.2" className="animate-ping" />
-                  <circle r="5" fill="#ef4444" stroke="#ffffff" strokeWidth="1.5" />
-                  <text x="8" y="3" fill="#f87171" fontSize="8" fontFamily="monospace" fontWeight="bold">
-                    ALERT #{inc.event_id?.slice(0, 6) || i+1}
-                  </text>
-                </g>
-              );
-            })}
-
-            {/* Crosshair Target Point & Connecting Line */}
-            {targetPoint && nearestCameraInfo && !placementMode && (
-              <g>
-                <line
-                  x1={targetPoint.x}
-                  y1={targetPoint.y}
-                  x2={nearestCameraInfo.camera.mapX}
-                  y2={nearestCameraInfo.camera.mapY}
-                  stroke="#38bdf8"
-                  strokeWidth="1.5"
-                  strokeDasharray="4 4"
-                />
-                <circle cx={targetPoint.x} cy={targetPoint.y} r="8" fill="none" stroke="#38bdf8" strokeWidth="2" />
-                <circle cx={targetPoint.x} cy={targetPoint.y} r="2" fill="#38bdf8" />
-                <line x1={targetPoint.x - 12} y1={targetPoint.y} x2={targetPoint.x + 12} y2={targetPoint.y} stroke="#38bdf8" strokeWidth="1.5" />
-                <line x1={targetPoint.x} y1={targetPoint.y - 12} x2={targetPoint.x} y2={targetPoint.y + 12} stroke="#38bdf8" strokeWidth="1.5" />
-              </g>
-            )}
-          </svg>
-        </div>
-
-        {/* Selected Camera Drawer */}
-        {selectedCam && (
-          <div className="absolute bottom-4 right-4 z-20 bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-lg p-4 w-80 shadow-2xl text-xs font-mono space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-              <div>
-                <span className="font-bold text-white truncate block">{selectedCam.name}</span>
-                <span className="text-[10px] text-slate-400">{selectedCam.camera_id}</span>
+        {/* Floating Calibration HUD Overlay */}
+        {calibrationCamId && (
+          <div className="absolute top-4 left-4 z-20 w-84 p-4 rounded-lg bg-slate-900/95 border border-amber-500/80 shadow-2xl backdrop-blur-md text-xs font-mono">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800 mb-3">
+              <div className="flex items-center gap-2 text-amber-400 font-bold">
+                <Sliders className="w-4 h-4" />
+                <span>SPATIAL CALIBRATION</span>
               </div>
-              <button onClick={() => setSelectedCam(null)} className="text-slate-400 hover:text-white p-1">
-                ✕
+              <button 
+                onClick={() => setCalibrationCamId(null)}
+                className="text-slate-400 hover:text-slate-200"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="aspect-video bg-black rounded overflow-hidden border border-slate-800">
-              <img
-                src={getCameraStreamUrl(selectedCam.camera_id, true)}
-                alt={selectedCam.name}
-                className="w-full h-full object-contain"
-                onError={(e) => { e.target.style.display = 'none'; }}
+            <p className="text-[11px] text-slate-300 mb-3">
+              Click anywhere on the map to set camera coordinates, or adjust the sliders below:
+            </p>
+
+            {tempCoords ? (
+              <div className="p-2 rounded bg-slate-950/70 border border-slate-800 mb-3 text-[11px] text-emerald-400">
+                Lat: {tempCoords.lat.toFixed(6)}, Lng: {tempCoords.lng.toFixed(6)}
+              </div>
+            ) : (
+              <div className="p-2 rounded bg-amber-950/40 border border-amber-800 mb-3 text-[11px] text-amber-300">
+                Click map to select placement location
+              </div>
+            )}
+
+            {/* Direction Slider */}
+            <div className="mb-3">
+              <div className="flex justify-between text-slate-300 mb-1">
+                <span>Azimuth Heading:</span>
+                <span className="text-amber-400 font-bold">{tempDirection}°</span>
+              </div>
+              <input 
+                type="range" 
+                min="0" 
+                max="359" 
+                value={tempDirection} 
+                onChange={(e) => setTempDirection(parseInt(e.target.value))}
+                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
               />
             </div>
 
-            <div className="space-y-1 text-[11px] text-slate-300">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Sector:</span>
-                <span className="text-white font-medium">{selectedCam.sector || 'Sector Alpha'}</span>
+            {/* FOV Slider */}
+            <div className="mb-3">
+              <div className="flex justify-between text-slate-300 mb-1">
+                <span>FOV Aperture:</span>
+                <span className="text-amber-400 font-bold">{tempFov}°</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Status:</span>
-                <span className={`font-bold ${selectedCam.status === 'ONLINE' ? 'text-emerald-400' : 'text-slate-400'}`}>
-                  {selectedCam.status || 'ONLINE'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Coverage:</span>
-                <span className="text-cyan-400 font-bold">
-                  {selectedCam.fov_degrees ? `${selectedCam.fov_degrees}° / ${selectedCam.range_meters || 150}m` : 'Coverage not configured'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Coordinates:</span>
-                <span className="text-slate-300">
-                  {selectedCam.hasCoords ? `${selectedCam.latitude?.toFixed(4)}, ${selectedCam.longitude?.toFixed(4)}` : 'Coordinates not configured'}
-                </span>
-              </div>
+              <input 
+                type="range" 
+                min="15" 
+                max="120" 
+                value={tempFov} 
+                onChange={(e) => setTempFov(parseInt(e.target.value))}
+                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+              />
             </div>
 
-            {onNavigateToCameras && (
-              <button
-                onClick={() => onNavigateToCameras(selectedCam.camera_id)}
-                className="w-full py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-bold transition flex items-center justify-center gap-1.5"
-              >
-                <span>Jump to Camera Console</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </button>
-            )}
+            {/* Range Slider */}
+            <div className="mb-4">
+              <div className="flex justify-between text-slate-300 mb-1">
+                <span>Metric Range:</span>
+                <span className="text-amber-400 font-bold">{tempRange}m</span>
+              </div>
+              <input 
+                type="range" 
+                min="30" 
+                max="500" 
+                step="10"
+                value={tempRange} 
+                onChange={(e) => setTempRange(parseInt(e.target.value))}
+                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+              />
+            </div>
+
+            <button
+              onClick={handleSaveCalibration}
+              disabled={savingPosition || !tempCoords}
+              className="w-full flex items-center justify-center gap-2 py-2 rounded bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-slate-950 font-bold transition-colors"
+            >
+              <Save className="w-4 h-4" />
+              <span>{savingPosition ? 'Saving to Database...' : 'Save Calibration'}</span>
+            </button>
           </div>
         )}
+
+        {/* Floating Triangulation Target HUD */}
+        {nearestDistanceInfo && !calibrationCamId && (
+          <div className="absolute bottom-6 left-4 z-20 p-3 rounded-lg bg-slate-900/95 border border-rose-600/70 shadow-2xl backdrop-blur-md text-xs font-mono max-w-xs">
+            <div className="flex items-center gap-2 text-rose-400 font-bold mb-1.5">
+              <Crosshair className="w-4 h-4" />
+              <span>TRIANGULATION RESULT</span>
+            </div>
+            <div className="text-slate-300 text-[11px] mb-1">
+              Nearest Node: <span className="font-bold text-white">{nearestDistanceInfo.camera.name}</span>
+            </div>
+            <div className="text-slate-300 text-[11px] mb-2">
+              Geodesic Distance: <span className="font-bold text-emerald-400">{nearestDistanceInfo.meters} meters</span>
+            </div>
+            <div className="text-[10px] text-slate-400 border-t border-slate-800 pt-1.5">
+              Travel ETA unavailable (Terrain & transport speed model not configured)
+            </div>
+          </div>
+        )}
+
+        {/* Right Tactical Sidebar */}
+        <div className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col z-10">
+          {/* Selected Camera Details Card */}
+          {selectedCam ? (
+            <div className="p-4 border-b border-slate-800 bg-slate-900/90">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-mono font-bold text-sm text-slate-100">{selectedCam.name}</span>
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                  selectedCam.status === 'ONLINE' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-rose-950 text-rose-400 border border-rose-800'
+                }`}>
+                  {selectedCam.status}
+                </span>
+              </div>
+
+              <div className="space-y-1.5 text-xs font-mono text-slate-300 mb-3">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Sector:</span>
+                  <span>{selectedCam.sector || 'Unassigned'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Profile:</span>
+                  <span>{selectedCam.profile}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Position:</span>
+                  {selectedCam.latitude != null ? (
+                    <span className="text-emerald-400">{selectedCam.latitude.toFixed(4)}, {selectedCam.longitude.toFixed(4)}</span>
+                  ) : (
+                    <span className="text-amber-400">Location not configured</span>
+                  )}
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Coverage:</span>
+                  {selectedCam.direction != null ? (
+                    <span>{selectedCam.direction}° @ {selectedCam.range_meters || 150}m</span>
+                  ) : (
+                    <span className="text-amber-400">Coverage not configured</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Live Mini Preview */}
+              <div className="relative rounded overflow-hidden aspect-video bg-black border border-slate-800 mb-3">
+                <img 
+                  src={getCameraStreamUrl(selectedCam.camera_id)} 
+                  alt={selectedCam.name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
+                  }}
+                />
+                <div className="hidden absolute inset-0 items-center justify-center bg-slate-950 text-slate-500 text-[11px] font-mono">
+                  Stream Standby
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleStartCalibration(selectedCam)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono border border-slate-700 transition-colors"
+                >
+                  <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Calibrate</span>
+                </button>
+                {onNavigateToCameras && (
+                  <button
+                    onClick={() => onNavigateToCameras(selectedCam.camera_id)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs font-mono font-semibold transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open Feed</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 border-b border-slate-800 text-xs font-mono text-slate-400 text-center">
+              Click on any camera marker on the map to inspect live optics and coordinates.
+            </div>
+          )}
+
+          {/* Calibrated Cameras List */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div className="flex items-center justify-between text-xs font-mono font-bold text-slate-300">
+              <span>SURVEILLANCE NODES</span>
+              <span className="text-slate-500">{cameras.length} Active</span>
+            </div>
+
+            <div className="space-y-2">
+              {cameras.map(c => {
+                const hasGps = c.latitude != null && c.longitude != null;
+                return (
+                  <div 
+                    key={c.camera_id}
+                    onClick={() => {
+                      setSelectedCam(c);
+                      if (hasGps && mapInstanceRef.current) {
+                        mapInstanceRef.current.flyTo([c.latitude, c.longitude], 16);
+                      }
+                    }}
+                    className={`p-2.5 rounded border text-xs font-mono cursor-pointer transition-colors ${
+                      selectedCam?.camera_id === c.camera_id 
+                        ? 'bg-slate-800 border-blue-500/80 text-white' 
+                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-850 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-slate-200">{c.name}</span>
+                      <span className={`w-2 h-2 rounded-full ${c.status === 'ONLINE' ? 'bg-emerald-400' : 'bg-rose-500'}`} />
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-slate-400">
+                      <span>{c.sector || 'Sector Alpha'}</span>
+                      {hasGps ? (
+                        <span className="text-emerald-400">Calibrated ({c.direction || 0}°)</span>
+                      ) : (
+                        <span className="text-amber-400 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" /> Location not set
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Unconfigured Alert Drawer */}
+            {unconfiguredCameras.length > 0 && (
+              <div className="mt-4 p-3 rounded bg-amber-950/30 border border-amber-800/60 text-xs font-mono">
+                <div className="flex items-center gap-2 text-amber-300 font-bold mb-1.5">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>Uncalibrated Nodes ({unconfiguredCameras.length})</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mb-2.5">
+                  The following cameras lack geographic coordinates:
+                </p>
+                <div className="space-y-1.5">
+                  {unconfiguredCameras.map(uc => (
+                    <div key={uc.camera_id} className="flex items-center justify-between text-[11px] bg-slate-900/90 p-1.5 rounded border border-slate-800">
+                      <span className="text-slate-300 truncate max-w-[140px]">{uc.name}</span>
+                      <button
+                        onClick={() => handleStartCalibration(uc)}
+                        className="px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-[10px]"
+                      >
+                        Place
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-
-      {/* Operational Area Setup Modal */}
-      {showAreaSetupModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 font-mono text-xs">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-              <span className="font-bold text-slate-100 flex items-center gap-1.5">
-                <MapPin className="w-4 h-4 text-emerald-400" /> Operational Area Setup
-              </span>
-              <button onClick={() => setShowAreaSetupModal(false)} className="text-slate-400 hover:text-white">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
-              Define the geographic anchor for this surveillance perimeter. Coordinates serve as the reference origin for all cameras and distance triangulation.
-            </p>
-
-            <div className="space-y-3">
-              <button
-                type="button"
-                onClick={handleDetectDeviceLocation}
-                disabled={detectingGps}
-                className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded font-bold transition flex items-center justify-center gap-2 shadow"
-              >
-                <LocateFixed className={`w-4 h-4 ${detectingGps ? 'animate-spin' : ''}`} />
-                <span>{detectingGps ? 'Acquiring GPS Position...' : 'Detect Device Location (Browser GPS)'}</span>
-              </button>
-
-              <div className="flex items-center gap-2 text-slate-500 my-1">
-                <div className="flex-1 border-t border-slate-800"></div>
-                <span className="text-[10px] uppercase">OR ENTER MANUALLY</span>
-                <div className="flex-1 border-t border-slate-800"></div>
-              </div>
-
-              <form onSubmit={handleSaveManualLocation} className="space-y-2.5">
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-0.5">Facility / Sector Name:</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. North Gate Command Facility"
-                    value={manualAreaName}
-                    onChange={e => setManualAreaName(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-white"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-0.5">Latitude (°N):</label>
-                    <input
-                      type="number"
-                      step="0.0001"
-                      placeholder="e.g. 28.6139"
-                      value={manualAreaLat}
-                      onChange={e => setManualAreaLat(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-white"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-0.5">Longitude (°E):</label>
-                    <input
-                      type="number"
-                      step="0.0001"
-                      placeholder="e.g. 77.2090"
-                      value={manualAreaLng}
-                      onChange={e => setManualAreaLng(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-white"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full mt-2 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded font-bold transition flex items-center justify-center gap-1.5"
-                >
-                  <Save className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Save Operational Coordinates</span>
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add Camera at Position Modal */}
-      {showAddModal && tempCoords && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 font-mono text-xs">
-          <div className="bg-slate-900 border border-cyan-500/40 rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-              <span className="font-bold text-white flex items-center gap-1.5">
-                <Camera className="w-4 h-4 text-cyan-400" /> Add Camera at Map Location
-              </span>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-white">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateCameraAtLocation} className="space-y-3">
-              <div>
-                <label className="block text-[11px] text-slate-400 mb-1">Camera Name:</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Perimeter Camera 3"
-                  value={newCamName}
-                  onChange={e => setNewCamName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-white"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] text-slate-400 mb-1">Stream Source (RTSP URL, '0' for Webcam, or video file):</label>
-                <input
-                  type="text"
-                  placeholder="e.g. rtsp://192.168.1.100:554/stream or 0"
-                  value={newCamRtsp}
-                  onChange={e => setNewCamRtsp(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-white"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] text-slate-400 mb-1">Sector Identifier:</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Sector Charlie"
-                  value={newCamSector}
-                  onChange={e => setNewCamSector(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-white"
-                />
-              </div>
-
-              <div className="p-2.5 bg-slate-950 rounded border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                <div>Selected Coordinates: <span className="text-emerald-400 font-bold">{tempCoords.lat}, {tempCoords.lng}</span></div>
-                <div>Default Azimuth Heading: <span className="text-cyan-400">{tempDirection}°</span></div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingPosition}
-                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold transition flex items-center gap-1.5"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>{savingPosition ? 'Deploying...' : 'Deploy Camera'}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
-

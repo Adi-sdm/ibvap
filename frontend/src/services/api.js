@@ -1,78 +1,109 @@
 const API_BASE = '/api';
 
+async function handleResponse(res) {
+  const contentType = res.headers.get('content-type') || '';
+  if (!res.ok) {
+    let errorDetail = res.statusText || `HTTP ${res.status}`;
+    if (contentType.includes('application/json')) {
+      try {
+        const data = await res.json();
+        errorDetail = data.detail || data.message || JSON.stringify(data);
+      } catch (_) {}
+    } else {
+      try {
+        const text = await res.text();
+        if (text && text.length < 200) errorDetail = text;
+      } catch (_) {}
+    }
+    throw new Error(errorDetail);
+  }
+  if (contentType.includes('application/json')) {
+    return res.json();
+  }
+  return res.text();
+}
+
 // Cameras & Dynamic Profiles
-export const getCameras = () => fetch(`${API_BASE}/cameras`).then(r => r.json());
-export const createCamera = (data) => fetch(`${API_BASE}/cameras`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(r => r.json());
-export const updateCameraConfig = (cameraId, config) => fetch(`${API_BASE}/cameras/${cameraId}/config`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) }).then(r => r.json());
-export const testCameraConnection = (rtsp_url) => fetch(`${API_BASE}/cameras/test-connection`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({rtsp_url}) }).then(r => r.json());
-export const deleteCamera = (id) => fetch(`${API_BASE}/cameras/${id}`, { method: 'DELETE' }).then(r => r.json());
-export const getCameraHealth = (id) => fetch(`${API_BASE}/cameras/${id}/health`).then(r => r.json());
-export const startCamera = (id) => fetch(`${API_BASE}/cameras/${id}/start`, { method: 'POST' }).then(r => r.json());
-export const stopCamera = (id) => fetch(`${API_BASE}/cameras/${id}/stop`, { method: 'POST' }).then(r => r.json());
+export const getCameras = () => fetch(`${API_BASE}/cameras`).then(handleResponse);
+export const createCamera = (data) => fetch(`${API_BASE}/cameras`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(handleResponse);
+export const updateCameraConfig = (cameraId, config) => fetch(`${API_BASE}/cameras/${cameraId}/config`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) }).then(handleResponse);
+export const testCameraConnection = (rtsp_url) => fetch(`${API_BASE}/cameras/test-connection`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({rtsp_url}) }).then(handleResponse);
+export const deleteCamera = (id) => fetch(`${API_BASE}/cameras/${id}`, { method: 'DELETE' }).then(handleResponse);
+export const getCameraHealth = (id) => fetch(`${API_BASE}/cameras/${id}/health`).then(handleResponse);
+export const startCamera = (id) => fetch(`${API_BASE}/cameras/${id}/start`, { method: 'POST' }).then(handleResponse);
+export const stopCamera = (id) => fetch(`${API_BASE}/cameras/${id}/stop`, { method: 'POST' }).then(handleResponse);
 export const getCameraStreamUrl = (id, annotated = true) => `${API_BASE}/cameras/${id}/stream?annotated=${annotated ? '1' : '0'}`;
-export const getProfiles = () => fetch(`${API_BASE}/profiles`).then(r => r.json());
+export const getProfiles = () => fetch(`${API_BASE}/profiles`).then(handleResponse);
 
 // Incidents & Dual Reasoning Events
-export const getEvents = (offset = 0, limit = 25) => fetch(`${API_BASE}/events?offset=${offset}&limit=${limit}`).then(r => r.json());
-export const getEvent = (id) => fetch(`${API_BASE}/events/${id}`).then(r => r.json());
-export const updateEventStatus = (id, status) => fetch(`${API_BASE}/events/${id}/status`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({status}) }).then(r => r.json());
-export const updateEventFeedback = (id, feedback, notes) => fetch(`${API_BASE}/events/${id}/feedback`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({feedback, notes}) }).then(r => r.json());
-export const consultGemini = (eventId) => fetch(`${API_BASE}/events/${eventId}/consult-gemini`, { method: 'POST' }).then(r => r.json());
+export const getEvents = (offset = 0, limit = 25, source = null) => {
+  let url = `${API_BASE}/events?offset=${offset}&limit=${limit}`;
+  if (source) url += `&source=${encodeURIComponent(source)}`;
+  return fetch(url).then(handleResponse);
+};
+export const getEvent = (id) => fetch(`${API_BASE}/events/${id}`).then(handleResponse);
+export const updateEventStatus = (id, status) => fetch(`${API_BASE}/events/${id}/status`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({status}) }).then(handleResponse);
+export const updateEventFeedback = (id, feedback, notes) => fetch(`${API_BASE}/events/${id}/feedback`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({feedback, notes}) }).then(handleResponse);
+export const consultGemini = (eventId) => fetch(`${API_BASE}/events/${eventId}/consult-gemini`, { method: 'POST' }).then(handleResponse);
 
 // ANPR & Vehicle Intelligence
-export const getANPR = (offset = 0, limit = 25) => fetch(`${API_BASE}/anpr?offset=${offset}&limit=${limit}`).then(r => r.json());
-export const getAuthorizedVehicles = () => fetch(`${API_BASE}/vehicles/authorized`).then(r => r.json());
-export const createAuthorizedVehicle = (data) => fetch(`${API_BASE}/vehicles/authorized`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(r => r.json());
-export const deleteAuthorizedVehicle = (plate) => fetch(`${API_BASE}/vehicles/authorized/${encodeURIComponent(plate)}`, { method: 'DELETE' }).then(r => r.json());
-export const verifyVehicleIntel = (plate, detected_color, sector) => fetch(`${API_BASE}/vehicles/verify`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ plate, detected_color, sector }) }).then(r => r.json());
-export const getVehicleHandoff = (cameraId) => fetch(`${API_BASE}/vehicles/handoff?camera_id=${encodeURIComponent(cameraId)}`).then(r => r.json());
+export const getANPR = (offset = 0, limit = 25) => fetch(`${API_BASE}/anpr?offset=${offset}&limit=${limit}`).then(handleResponse);
+export const getAuthorizedVehicles = () => fetch(`${API_BASE}/vehicles/authorized`).then(handleResponse);
+export const createAuthorizedVehicle = (data) => fetch(`${API_BASE}/vehicles/authorized`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(handleResponse);
+export const deleteAuthorizedVehicle = (plate) => fetch(`${API_BASE}/vehicles/authorized/${encodeURIComponent(plate)}`, { method: 'DELETE' }).then(handleResponse);
+export const verifyVehicleIntel = (plate, detected_color, sector) => fetch(`${API_BASE}/vehicles/verify`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ plate, detected_color, sector }) }).then(handleResponse);
+export const getVehicleHandoff = (cameraId) => fetch(`${API_BASE}/vehicles/handoff?camera_id=${encodeURIComponent(cameraId)}`).then(handleResponse);
 
 // Authorized Personnel
-export const getAuthorizedPersonnel = () => fetch(`${API_BASE}/personnel/authorized`).then(r => r.json());
-export const createAuthorizedPerson = (data) => fetch(`${API_BASE}/personnel/authorized`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(r => r.json());
-export const deleteAuthorizedPerson = (id) => fetch(`${API_BASE}/personnel/authorized/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(r => r.json());
+export const getAuthorizedPersonnel = () => fetch(`${API_BASE}/personnel/authorized`).then(handleResponse);
+export const createAuthorizedPerson = (data) => fetch(`${API_BASE}/personnel/authorized`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(handleResponse);
+export const deleteAuthorizedPerson = (id) => fetch(`${API_BASE}/personnel/authorized/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(handleResponse);
 
 // Virtual Geofence Zones
-export const getZones = (cameraId) => fetch(`${API_BASE}/zones${cameraId ? '?camera_id=' + cameraId : ''}`).then(r => r.json());
-export const createZone = (data) => fetch(`${API_BASE}/zones`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(r => r.json());
+export const getZones = (cameraId) => fetch(`${API_BASE}/zones${cameraId ? '?camera_id=' + cameraId : ''}`).then(handleResponse);
+export const createZone = (data) => fetch(`${API_BASE}/zones`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(handleResponse);
 export const saveZone = createZone;
-export const deleteZone = (id) => fetch(`${API_BASE}/zones/${id}`, { method: 'DELETE' }).then(r => r.json());
+export const deleteZone = (id) => fetch(`${API_BASE}/zones/${id}`, { method: 'DELETE' }).then(handleResponse);
 
 // Gemini Advisory Configuration
-export const getGeminiStatus = () => fetch(`${API_BASE}/ai/gemini/status`).then(r => r.json());
-export const updateGeminiConfig = (config) => fetch(`${API_BASE}/ai/gemini/config`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) }).then(r => r.json());
-export const testGeminiConnection = (req = {}) => fetch(`${API_BASE}/ai/gemini/test`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(req) }).then(r => r.json());
-export const toggleGemini = () => fetch(`${API_BASE}/ai/gemini/toggle`, { method: 'POST' }).then(r => r.json());
-export const clearGeminiCredentials = () => fetch(`${API_BASE}/ai/gemini/config`, { method: 'DELETE' }).then(r => r.json());
+export const getGeminiStatus = () => fetch(`${API_BASE}/ai/gemini/status`).then(handleResponse);
+export const updateGeminiConfig = (config) => fetch(`${API_BASE}/ai/gemini/config`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) }).then(handleResponse);
+export const testGeminiConnection = (req = {}) => fetch(`${API_BASE}/ai/gemini/test`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(req) }).then(handleResponse);
+export const toggleGemini = () => fetch(`${API_BASE}/ai/gemini/toggle`, { method: 'POST' }).then(handleResponse);
+export const clearGeminiCredentials = () => fetch(`${API_BASE}/ai/gemini/config`, { method: 'DELETE' }).then(handleResponse);
 
 // Platform Settings & Models
-export const getSystemSettings = () => fetch(`${API_BASE}/settings`).then(r => r.json());
-export const updateSystemSettings = (config) => fetch(`${API_BASE}/settings`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) }).then(r => r.json());
+export const getSystemSettings = () => fetch(`${API_BASE}/settings`).then(handleResponse);
+export const updateSystemSettings = (config) => fetch(`${API_BASE}/settings`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) }).then(handleResponse);
 export const getSensitivity = getSystemSettings;
 export const updateSensitivity = updateSystemSettings;
-export const getAIModels = () => fetch(`${API_BASE}/ai/models`).then(r => r.json());
+export const getAIModels = () => fetch(`${API_BASE}/ai/models`).then(handleResponse);
 
 // System Telemetry & Mode
-export const getSystemMode = () => fetch(`${API_BASE}/system/mode`).then(r => r.json());
-export const getSystemStats = () => fetch(`${API_BASE}/system/stats`).then(r => r.json());
-export const startDemo = () => fetch(`${API_BASE}/demo/start`, { method: 'POST' }).then(r => r.json());
-export const stopDemo = () => fetch(`${API_BASE}/demo/stop`, { method: 'POST' }).then(r => r.json());
+export const getSystemMode = () => fetch(`${API_BASE}/system/mode`).then(handleResponse);
+export const getSystemStats = (source = null) => {
+  let url = `${API_BASE}/system/stats`;
+  if (source) url += `?source=${encodeURIComponent(source)}`;
+  return fetch(url).then(handleResponse);
+};
+export const startDemo = () => fetch(`${API_BASE}/demo/start`, { method: 'POST' }).then(handleResponse);
+export const stopDemo = () => fetch(`${API_BASE}/demo/stop`, { method: 'POST' }).then(handleResponse);
 
 // Evidence Vault & Forensic Dossier
 export const getEvidence = (cameraId = '', search = '', offset = 0, limit = 25) => {
   let url = `${API_BASE}/evidence?offset=${offset}&limit=${limit}`;
   if (cameraId) url += `&camera_id=${encodeURIComponent(cameraId)}`;
   if (search) url += `&search=${encodeURIComponent(search)}`;
-  return fetch(url).then(r => r.json());
+  return fetch(url).then(handleResponse);
 };
-export const getIncidentDossier = (eventId) => fetch(`${API_BASE}/evidence/${eventId}/dossier`).then(r => r.json());
+export const getIncidentDossier = (eventId) => fetch(`${API_BASE}/evidence/${eventId}/dossier`).then(handleResponse);
 
 // Activity Timeline & Behavioral AI
-export const getActivityTimeline = (limit = 30) => fetch(`${API_BASE}/system/timeline?limit=${limit}`).then(r => r.json());
-export const getAIAnalysis = () => fetch(`${API_BASE}/ai/analysis`).then(r => r.json());
-export const getCameraActivityAnalysis = (cameraId) => fetch(`${API_BASE}/cameras/${encodeURIComponent(cameraId)}/activity-analysis`).then(r => r.json());
-export const getAuditLog = () => fetch(`${API_BASE}/audit-log`).then(r => r.ok ? r.json() : []);
-export const createAuditLog = (data) => fetch(`${API_BASE}/audit-log`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(r => r.json());
+export const getActivityTimeline = (limit = 30) => fetch(`${API_BASE}/system/timeline?limit=${limit}`).then(handleResponse);
+export const getAIAnalysis = () => fetch(`${API_BASE}/ai/analysis`).then(handleResponse);
+export const getCameraActivityAnalysis = (cameraId) => fetch(`${API_BASE}/cameras/${encodeURIComponent(cameraId)}/activity-analysis`).then(handleResponse);
+export const getAuditLog = () => fetch(`${API_BASE}/audit-log`).then(r => r.ok ? r.json() : []).catch(() => []);
+export const createAuditLog = (data) => fetch(`${API_BASE}/audit-log`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(handleResponse);
 
 // WebSocket Live Telemetry
 export function connectWebSocket(onMessage) {
