@@ -213,10 +213,11 @@ async function runEnterpriseBrowserTests() {
     // Click Halt button to trigger Privileged Action
     await page.evaluate(() => {
       const btns = Array.from(document.querySelectorAll('button'));
-      const haltBtn = btns.find(b => b.textContent.trim() === 'Halt');
+      const haltBtn = btns.find(b => b.textContent.includes('Halt'));
       if (haltBtn) haltBtn.click();
+      else console.log("Halt button not found among:", btns.map(b => b.textContent.trim()));
     });
-    await sleep(1000);
+    await sleep(1500);
 
     const privModalOpen = await page.evaluate(() => {
       return document.body.innerText.includes('Senior Officer Authentication Required');
