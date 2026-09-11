@@ -240,6 +240,9 @@ def start_camera_pipeline(camera_id: str, source: str, cam_record=None):
             except Exception:
                 pass
         gemini_enabled = getattr(cam_record, "gemini_enabled", True)
+        is_demo = bool(getattr(cam_record, "is_demo", False)) or camera_id.startswith("DEMO") or camera_id == "CAM-E2E-TEST"
+    else:
+        is_demo = camera_id.startswith("DEMO") or camera_id == "CAM-E2E-TEST"
 
     pipeline = CameraPipeline(
         camera_id=camera_id,
@@ -251,7 +254,8 @@ def start_camera_pipeline(camera_id: str, source: str, cam_record=None):
         enabled_modules=enabled_modules,
         alert_threshold=alert_threshold,
         overlay_config=overlay_config,
-        gemini_enabled=gemini_enabled
+        gemini_enabled=gemini_enabled,
+        is_demo=is_demo
     )
     pipeline.start()
     active_pipelines[camera_id] = pipeline

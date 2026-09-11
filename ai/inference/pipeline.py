@@ -20,10 +20,12 @@ class CameraPipeline(threading.Thread):
                  enabled_modules: Optional[Dict[str, bool]] = None,
                  alert_threshold: int = 60,
                  overlay_config: Optional[Dict[str, bool]] = None,
-                 gemini_enabled: bool = True):
+                 gemini_enabled: bool = True,
+                 is_demo: bool = False):
         super().__init__(daemon=True)
         self.camera_id = camera_id
         self.source = source
+        self.is_demo = is_demo or camera_id.startswith("DEMO") or camera_id == "CAM-E2E-TEST"
         # Provide an isolated YOLO instance per camera pipeline for independent ByteTrack tracking
         if model is not None and getattr(model, "_ibvap_isolated", False):
             self.model = model
@@ -621,6 +623,7 @@ class CameraPipeline(threading.Thread):
                     explainability=json.dumps(fused_event.get("explainability", [])),
                     gemini_status="PENDING" if self.gemini_enabled else "NONE",
                     status="NEW",
+                    is_demo=self.is_demo,
                 )
                 db.add(event)
                 db.commit()
