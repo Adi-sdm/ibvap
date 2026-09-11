@@ -16,6 +16,7 @@ TESTS = [
     ("End-to-End Surveillance Flow", "tests/test_end_to_end.py"),
     ("Enterprise Profiles and Gemini Services", "tests/test_enterprise_features.py"),
     ("Vehicle Intelligence & Watchlist Hotlist", "tests/test_vehicle_intel.py"),
+    ("Deployment Architecture & Readiness", "tests/test_deployment_architecture.py"),
 ]
 
 def run_all():

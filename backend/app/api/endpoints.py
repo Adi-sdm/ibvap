@@ -1284,6 +1284,7 @@ def get_system_readiness(db: Session = Depends(get_db)):
 
     return SystemReadinessReport(
         overall_status=overall_status,
+        overall=overall_status,
         timestamp=time.time(),
         subsystems=subsystems
     )
@@ -1298,6 +1299,7 @@ def export_configuration(db: Session = Depends(get_db)):
     configs = db.query(SystemConfigDB).filter(SystemConfigDB.key != "gemini_api_key").all()
 
     return {
+        "platform": "IBVAP",
         "export_version": "1.0.0",
         "timestamp": time.time(),
         "exported_at": datetime.now(timezone.utc).isoformat(),

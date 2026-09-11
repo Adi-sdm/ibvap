@@ -359,5 +359,6 @@ class SystemReadinessSubsystem(BaseModel):
 
 class SystemReadinessReport(BaseModel):
     overall_status: str # "SYSTEM READY", "NOT READY", "INITIALIZATION REQUIRED"
+    overall: Optional[str] = None
     timestamp: float
     subsystems: List[SystemReadinessSubsystem]

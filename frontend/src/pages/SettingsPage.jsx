@@ -485,11 +485,11 @@ export default function SettingsPage({ systemMode, onRefresh }) {
 
             {/* Subsystem Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-              {readiness?.subsystems && Object.entries(readiness.subsystems).map(([key, item]) => {
+              {readiness?.subsystems && (Array.isArray(readiness.subsystems) ? readiness.subsystems : Object.values(readiness.subsystems)).map((item, idx) => {
                 const isReady = item.status === 'READY' || item.status === 'ONLINE' || item.status === 'OPERATIONAL' || item.status === 'SECURE';
-                const isWarning = item.status === 'INITIALIZATION REQUIRED' || item.status === 'UNCONFIGURED (LOCAL ONLY)' || item.status === 'NO CAMERAS CONFIGURED';
+                const isWarning = item.status === 'INITIALIZATION REQUIRED' || item.status === 'UNCONFIGURED' || item.status === 'UNCONFIGURED (LOCAL ONLY)' || item.status === 'NO CAMERAS CONFIGURED';
                 return (
-                  <div key={key} className="p-4 bg-slate-950/60 rounded-xl border border-slate-800/80 flex flex-col justify-between space-y-2">
+                  <div key={item.name || idx} className="p-4 bg-slate-950/60 rounded-xl border border-slate-800/80 flex flex-col justify-between space-y-2">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center space-x-2.5">
                         <div className={`w-2.5 h-2.5 rounded-full ${
@@ -497,7 +497,7 @@ export default function SettingsPage({ systemMode, onRefresh }) {
                           isWarning ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]' :
                           'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]'
                         }`} />
-                        <span className="font-mono text-xs font-bold text-slate-200">{item.name || key}</span>
+                        <span className="font-mono text-xs font-bold text-slate-200">{item.name}</span>
                       </div>
                       <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${
                         isReady ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' :
@@ -508,7 +508,7 @@ export default function SettingsPage({ systemMode, onRefresh }) {
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
-                      {item.details}
+                      {item.detail || item.details}
                     </p>
                   </div>
                 );
