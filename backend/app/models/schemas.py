@@ -20,6 +20,7 @@ class CameraCreate(BaseModel):
     direction: Optional[float] = 0.0
     fov_degrees: Optional[float] = 60.0
     range_meters: Optional[float] = 150.0
+    is_demo: Optional[bool] = None
 
 class CameraOut(BaseModel):
     camera_id: str
@@ -42,9 +43,10 @@ class CameraOut(BaseModel):
     fov_degrees: Optional[float] = 60.0
     range_meters: Optional[float] = 150.0
     is_demo: bool
+    maintenance_details: Optional[Any] = None
     model_config = ConfigDict(from_attributes=True)
 
-    @field_validator("enabled_modules", "overlay_config", mode="before")
+    @field_validator("enabled_modules", "overlay_config", "maintenance_details", mode="before")
     @classmethod
     def parse_json_dict(cls, v):
         if isinstance(v, str):
@@ -332,3 +334,30 @@ class AuthorizedPersonOut(BaseModel):
     assigned_sector: str
     created_at: Any
     model_config = ConfigDict(from_attributes=True)
+
+class MaintenanceRequest(BaseModel):
+    in_maintenance: bool
+    officer: str
+    reason: str
+    duration_minutes: Optional[int] = 60
+
+class OperationalSectorCreate(BaseModel):
+    name: str
+    boundary_coords: Optional[List[List[float]]] = None
+    priority: Optional[str] = "NORMAL"
+    notes: Optional[str] = None
+
+class OperationalSectorOut(OperationalSectorCreate):
+    sector_id: str
+    created_at: Any
+    model_config = ConfigDict(from_attributes=True)
+
+class SystemReadinessSubsystem(BaseModel):
+    name: str
+    status: str # "READY", "NOT READY", "UNCONFIGURED", "OFFLINE"
+    detail: str
+
+class SystemReadinessReport(BaseModel):
+    overall_status: str # "SYSTEM READY", "NOT READY", "INITIALIZATION REQUIRED"
+    timestamp: float
+    subsystems: List[SystemReadinessSubsystem]

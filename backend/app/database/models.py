@@ -27,6 +27,7 @@ class CameraDB(Base):
     fov_degrees = Column(Float, default=60.0)
     range_meters = Column(Float, default=150.0)
     is_demo = Column(Boolean, default=False)
+    maintenance_details = Column(Text, nullable=True) # JSON: in_maintenance, enabled_by, reason, start_time, duration_minutes
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 class VirtualZoneDB(Base):
@@ -128,4 +129,14 @@ class AuthorizedPersonDB(Base):
     clearance_level = Column(String, default="RESTRICTED") # TOP_SECRET, RESTRICTED, PUBLIC
     status = Column(String, default="ACTIVE") # ACTIVE, REVOKED, SUSPENDED
     assigned_sector = Column(String, default="Sector Alpha")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class OperationalSectorDB(Base):
+    __tablename__ = "operational_sectors"
+
+    sector_id = Column(String, primary_key=True, index=True)
+    name = Column(String, nullable=False, unique=True)
+    boundary_coords = Column(Text, nullable=True) # JSON list of [lat, lng]
+    priority = Column(String, default="NORMAL") # HIGH, NORMAL, LOW
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

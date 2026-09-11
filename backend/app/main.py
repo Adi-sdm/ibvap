@@ -21,6 +21,7 @@ EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
 active_pipelines: dict = {}  # camera_id -> CameraPipeline thread
 ws_clients: list = []
 system_mode = "live"  # "live" or "demo"
+recent_activities: list = []  # Ring buffer of recent detections / events
 shared_yolo_model = None  # Single YOLO instance shared across threads
 yolo_lock = threading.Lock()  # Lock for thread-safe inference
 
