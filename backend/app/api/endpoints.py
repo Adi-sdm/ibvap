@@ -1108,6 +1108,7 @@ def reset_to_clean(payload: dict, db: Session = Depends(get_db)):
     db.query(OperationalSectorDB).delete()
     db.query(AuthorizedVehicleDB).delete()
     db.query(AuthorizedPersonDB).delete()
+    db.query(EventDB).filter(EventDB.status.in_(["NEW", "INVESTIGATING", "ESCALATED"])).update({"status": "ARCHIVED"}, synchronize_session=False)
 
     init_config = db.query(SystemConfigDB).filter(SystemConfigDB.key == "system_initialized").first()
     if init_config:
