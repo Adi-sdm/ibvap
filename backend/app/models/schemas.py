@@ -15,6 +15,11 @@ class CameraCreate(BaseModel):
     alert_threshold: Optional[int] = 60
     overlay_config: Optional[Dict[str, bool]] = None
     gemini_enabled: Optional[bool] = True
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    direction: Optional[float] = 0.0
+    fov_degrees: Optional[float] = 60.0
+    range_meters: Optional[float] = 150.0
 
 class CameraOut(BaseModel):
     camera_id: str
@@ -31,6 +36,11 @@ class CameraOut(BaseModel):
     alert_threshold: Optional[int] = 60
     overlay_config: Optional[Any] = None # Parsed JSON dict or string
     gemini_enabled: Optional[bool] = True
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    direction: Optional[float] = 0.0
+    fov_degrees: Optional[float] = 60.0
+    range_meters: Optional[float] = 150.0
     is_demo: bool
     model_config = ConfigDict(from_attributes=True)
 
@@ -54,6 +64,11 @@ class CameraConfigUpdate(BaseModel):
     alert_threshold: Optional[int] = None
     overlay_config: Optional[Dict[str, bool]] = None
     gemini_enabled: Optional[bool] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    direction: Optional[float] = None
+    fov_degrees: Optional[float] = None
+    range_meters: Optional[float] = None
 
 class VirtualZoneCreate(BaseModel):
     camera_id: str
@@ -153,6 +168,12 @@ class SystemStats(BaseModel):
     total_tracks: int
     total_anpr: int
 
+class AuditLogCreate(BaseModel):
+    action: str
+    entity_type: Optional[str] = None
+    entity_id: Optional[str] = None
+    details: Optional[str] = None
+
 class AuditLogOut(BaseModel):
     id: int
     action: str
@@ -249,3 +270,43 @@ class GeminiConfigUpdate(BaseModel):
 class GeminiTestRequest(BaseModel):
     api_key: Optional[str] = None
     model: Optional[str] = None
+
+class AuthorizedVehicleCreate(BaseModel):
+    plate: str
+    owner_name: str
+    department: Optional[str] = "Border Security Force"
+    vehicle_type: Optional[str] = "SUV"
+    authorized_color: Optional[str] = "WHITE"
+    authorized_sectors: Optional[str] = "Sector Alpha, Sector Bravo"
+    status: Optional[str] = "ACTIVE"
+    notes: Optional[str] = None
+
+class AuthorizedVehicleOut(BaseModel):
+    plate: str
+    owner_name: str
+    department: str
+    vehicle_type: str
+    authorized_color: str
+    authorized_sectors: str
+    status: str
+    notes: Optional[str] = None
+    created_at: Any
+    model_config = ConfigDict(from_attributes=True)
+
+class AuthorizedPersonCreate(BaseModel):
+    personnel_id: str
+    full_name: str
+    role: Optional[str] = "Patrol Guard"
+    clearance_level: Optional[str] = "RESTRICTED"
+    status: Optional[str] = "ACTIVE"
+    assigned_sector: Optional[str] = "Sector Alpha"
+
+class AuthorizedPersonOut(BaseModel):
+    personnel_id: str
+    full_name: str
+    role: str
+    clearance_level: str
+    status: str
+    assigned_sector: str
+    created_at: Any
+    model_config = ConfigDict(from_attributes=True)

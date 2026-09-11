@@ -19,8 +19,13 @@ class EvidenceService:
         for item in self.storage_dir.iterdir():
             if item.is_file():
                 files.append(item)
-                
-        files.sort(key=lambda x: x.stat().st_mtime)
+        def safe_mtime(p):
+            try:
+                return p.stat().st_mtime
+            except (OSError, FileNotFoundError):
+                return 0
+
+        files.sort(key=safe_mtime)
         if len(files) > max_items:
             files_to_remove = files[:-max_items]
             for f in files_to_remove:

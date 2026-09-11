@@ -21,6 +21,11 @@ class CameraDB(Base):
     alert_threshold = Column(Integer, default=60) # 0-100 risk score required to dispatch incident
     overlay_config = Column(Text, default='{"labels": true, "confidence": true, "tracks": true, "zones": true, "speed": false, "debug": false}')
     gemini_enabled = Column(Boolean, default=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    direction = Column(Float, default=0.0) # degrees 0-360
+    fov_degrees = Column(Float, default=60.0)
+    range_meters = Column(Float, default=150.0)
     is_demo = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -100,3 +105,27 @@ class SystemConfigDB(Base):
     key = Column(String, primary_key=True, index=True)
     value = Column(Text, nullable=False) # JSON encoded configuration data
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class AuthorizedVehicleDB(Base):
+    __tablename__ = "authorized_vehicles"
+
+    plate = Column(String, primary_key=True, index=True)
+    owner_name = Column(String, nullable=False)
+    department = Column(String, default="Border Security Force")
+    vehicle_type = Column(String, default="SUV")
+    authorized_color = Column(String, default="WHITE")
+    authorized_sectors = Column(String, default="Sector Alpha, Sector Bravo")
+    status = Column(String, default="ACTIVE") # ACTIVE, EXPIRED, FLAGGED, WATCHLIST
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class AuthorizedPersonDB(Base):
+    __tablename__ = "authorized_personnel"
+
+    personnel_id = Column(String, primary_key=True, index=True)
+    full_name = Column(String, nullable=False)
+    role = Column(String, default="Patrol Guard")
+    clearance_level = Column(String, default="RESTRICTED") # TOP_SECRET, RESTRICTED, PUBLIC
+    status = Column(String, default="ACTIVE") # ACTIVE, REVOKED, SUSPENDED
+    assigned_sector = Column(String, default="Sector Alpha")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

@@ -57,6 +57,11 @@ def run_safe_migrations():
                 ("alert_threshold", "INTEGER DEFAULT 60"),
                 ("overlay_config", "TEXT DEFAULT '{\"labels\": true, \"confidence\": true, \"tracks\": true, \"zones\": true, \"speed\": false, \"debug\": false}'"),
                 ("gemini_enabled", "BOOLEAN DEFAULT 1"),
+                ("latitude", "FLOAT"),
+                ("longitude", "FLOAT"),
+                ("direction", "FLOAT DEFAULT 0.0"),
+                ("fov_degrees", "FLOAT DEFAULT 60.0"),
+                ("range_meters", "FLOAT DEFAULT 150.0"),
             ]
             for col_name, col_def in cam_columns_to_add:
                 if col_name not in existing_cam_cols:

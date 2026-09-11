@@ -508,6 +508,31 @@ class CameraPipeline(threading.Thread):
                         if fused:
                             self._store_event(zone_event, cls_name, conf, frame)
 
+                    # Framing & Posture Estimation (truthful geometry-based classification)
+                    bw = (x2 - x1) / max(w_frame, 1)
+                    bh = (y2 - y1) / max(h_frame, 1)
+                    aspect = (y2 - y1) / max(x2 - x1, 1e-4)
+                    touches_edge = (x1 <= 5 or y1 <= 5 or x2 >= w_frame - 5 or y2 >= h_frame - 5)
+
+                    if cls_name == "person":
+                        if bh >= 0.45 and 1.8 <= aspect <= 4.2 and not touches_edge:
+                            framing = "FULL_BODY"
+                        elif (bh >= 0.35 and bw >= 0.28) or (bh >= 0.5 and aspect < 1.8):
+                            framing = "FACE_CLOSE_RANGE"
+                        elif 0.18 <= bh < 0.45 and (touches_edge or aspect < 2.0):
+                            framing = "UPPER_BODY"
+                        elif touches_edge or bh < 0.12 or aspect < 1.0 or aspect > 4.5:
+                            framing = "WIDE_SCENE" if bh < 0.12 else "PARTIAL_BODY"
+                        elif bh < 0.18:
+                            framing = "WIDE_SCENE"
+                        else:
+                            framing = "FULL_BODY"
+                        
+                        posture = "UPRIGHT" if aspect >= 1.7 else ("CROUCHING / BENT" if aspect < 1.3 else "NORMAL")
+                    else:
+                        framing = "NON_HUMAN"
+                        posture = "N/A"
+
                     # ANPR for vehicles
                     if self.enabled_modules.get("anpr", True) and cls_name in ["car", "truck", "bus"] and getattr(self.anpr_engine, "available", True):
                         now = time.time()
@@ -522,7 +547,10 @@ class CameraPipeline(threading.Thread):
                         "confidence": conf,
                         "track_id": track_id,
                         "behaviour": behaviour_label,
-                        "in_restricted": in_restricted_zone
+                        "in_restricted": in_restricted_zone,
+                        "framing": framing,
+                        "posture": posture,
+                        "carried_bag": carried_bag
                     })
 
             self.latest_detections = current_detections
@@ -748,5 +776,83 @@ class CameraPipeline(threading.Thread):
                     return buffer.tobytes()
         return None
         
+    def get_live_activity_analysis(self) -> dict:
+        """Returns truthful, comprehensive real-time activity and framing analysis."""
+        with self.frame_lock:
+            detections = list(self.latest_detections)
+            health = dict(self.health_status)
+        
+        analyzer = self.behaviour_analyzer
+        tracks_analysis = []
+        
+        for det in detections:
+            tid = det.get("track_id")
+            cname = det.get("class_name", "person")
+            history = analyzer.track_histories.get(tid, [])
+            beh = analyzer.analyze(tid) if tid else {}
+            
+            dwell_time = 0.0
+            speed_norm = 0.0
+            if len(history) >= 2:
+                dwell_time = round(history[-1][2] - history[0][2], 1)
+                dx = history[-1][0] - history[-2][0]
+                dy = history[-1][1] - history[-2][1]
+                speed_norm = round((dx**2 + dy**2)**0.5, 4)
+                
+            direction_label = "Towards Restricted Zone" if (len(history) >= 2 and history[-1][1] > history[-2][1]) else ("Parallel to Fence" if len(history) >= 2 else "Stationary")
+            framing = det.get("framing", "UNKNOWN")
+            
+            tags = {
+                "observed": [
+                    f"BBox [{int(det['bbox'][0])}, {int(det['bbox'][1])}, {int(det['bbox'][2])}, {int(det['bbox'][3])}]",
+                    f"Confidence: {int(det.get('confidence', 0) * 100)}%",
+                    f"Track ID: #{tid}",
+                    f"Class: {cname}"
+                ],
+                "inferred": [
+                    f"Movement: {det.get('behaviour', 'Walking')}",
+                    f"Framing: {framing}",
+                    f"Direction: {direction_label}",
+                    f"Est. Posture: {det.get('posture', 'UPRIGHT')}"
+                ],
+                "unavailable": [
+                    "Skeletal Keypoints (yolov8n-pose.pt not loaded)",
+                    "Small Arms Detector (small_arms_yolov8.pt not loaded)"
+                ],
+                "insufficient_evidence": []
+            }
+            
+            if len(history) < 5:
+                tags["insufficient_evidence"].append("Short track history (<5 frames) for velocity convergence")
+            if framing == "PARTIAL_BODY":
+                tags["insufficient_evidence"].append("Subject partially occluded by frame boundary")
+                
+            tracks_analysis.append({
+                "track_id": tid,
+                "class_name": cname,
+                "confidence": det.get("confidence", 0.0),
+                "bbox": det.get("bbox"),
+                "framing": framing,
+                "posture": det.get("posture", "UPRIGHT"),
+                "behaviour": det.get("behaviour", "Walking"),
+                "dwell_time": dwell_time,
+                "speed_norm": speed_norm,
+                "direction": direction_label,
+                "in_restricted": det.get("in_restricted", False),
+                "evidence_tags": tags
+            })
+            
+        return {
+            "camera_id": self.camera_id,
+            "camera_name": self.name,
+            "sector": self.sector,
+            "framing_overview": tracks_analysis[0]["framing"] if tracks_analysis else "SCENE_IDLE",
+            "active_tracks_count": len(tracks_analysis),
+            "tracks": tracks_analysis,
+            "pose_model_status": "UNAVAILABLE (yolov8n-pose.pt not loaded)",
+            "weapon_model_status": "UNAVAILABLE (small_arms_yolov8.pt not loaded)",
+            "timestamp": time.time()
+        }
+
     def stop(self):
         self.running = False

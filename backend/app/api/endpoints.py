@@ -13,9 +13,10 @@ from backend.app.database.models import CameraDB, VirtualZoneDB, EventDB, Eviden
 from backend.app.models.schemas import (
     CameraCreate, CameraOut, CameraConfigUpdate, VirtualZoneCreate, VirtualZoneOut, 
     EventOut, EventStatusUpdate, EventFeedbackUpdate, ANPROut,
-    CameraTestRequest, CameraTestResponse, SystemStats, AuditLogOut,
+    CameraTestRequest, CameraTestResponse, SystemStats, AuditLogOut, AuditLogCreate,
     EvidenceVaultItem, ActivityTimelineItem, AITrackAnalysis, AISensitivityConfig,
-    SystemConfigOut, SystemConfigUpdate, GeminiStatusResponse, GeminiConfigUpdate, GeminiTestRequest
+    SystemConfigOut, SystemConfigUpdate, GeminiStatusResponse, GeminiConfigUpdate, GeminiTestRequest,
+    AuthorizedVehicleCreate, AuthorizedVehicleOut, AuthorizedPersonCreate, AuthorizedPersonOut
 )
 from backend.app.services.secrets_vault import secrets_vault
 from backend.app.services.profile_service import profile_service
@@ -69,6 +70,11 @@ def create_camera(cam: CameraCreate, db: Session = Depends(get_db)):
         alert_threshold=alert_thresh,
         overlay_config=json.dumps(overlays) if isinstance(overlays, dict) else overlays,
         gemini_enabled=cam.gemini_enabled if cam.gemini_enabled is not None else True,
+        latitude=cam.latitude,
+        longitude=cam.longitude,
+        direction=cam.direction or 0.0,
+        fov_degrees=cam.fov_degrees or 60.0,
+        range_meters=cam.range_meters or 150.0,
         fps=cam.fps or 0.0,
         resolution=cam.resolution or "800x600",
         status="ONLINE",
@@ -118,6 +124,16 @@ def update_camera_config(camera_id: str, update: CameraConfigUpdate, db: Session
         hot_config["overlay_config"] = update.overlay_config
     if update.gemini_enabled is not None:
         cam.gemini_enabled = update.gemini_enabled
+    if update.latitude is not None:
+        cam.latitude = update.latitude
+    if update.longitude is not None:
+        cam.longitude = update.longitude
+    if update.direction is not None:
+        cam.direction = update.direction
+    if update.fov_degrees is not None:
+        cam.fov_degrees = update.fov_degrees
+    if update.range_meters is not None:
+        cam.range_meters = update.range_meters
         hot_config["gemini_enabled"] = update.gemini_enabled
 
     db.commit()
@@ -339,6 +355,7 @@ def list_events(
             "operator_notes": ev.operator_notes,
             "is_demo": ev.is_demo,
             "evidence_snapshot": evidence.snapshot_path if evidence else None,
+            "video_clip_path": evidence.video_clip_path if evidence else None,
             "evidence_hash": evidence.sha256_hash if evidence else None
         })
     return {"items": items, "total": total, "offset": offset, "limit": limit}
@@ -378,6 +395,7 @@ def get_event(event_id: str, db: Session = Depends(get_db)):
         "operator_notes": ev.operator_notes,
         "is_demo": ev.is_demo,
         "evidence_snapshot": evidence.snapshot_path if evidence else None,
+        "video_clip_path": evidence.video_clip_path if evidence else None,
         "evidence_hash": evidence.sha256_hash if evidence else None
     }
 
@@ -551,6 +569,26 @@ def update_system_settings(update: SystemConfigUpdate, db: Session = Depends(get
     db.commit()
     return get_system_settings(db)
 
+# --- AUDIT LOG ---
+@router.get("/audit-log", response_model=List[AuditLogOut])
+def get_audit_log(limit: int = 50, db: Session = Depends(get_db)):
+    logs = db.query(AuditLogDB).order_by(AuditLogDB.created_at.desc()).limit(limit).all()
+    return logs
+
+@router.post("/audit-log", response_model=AuditLogOut)
+def record_audit_action(entry: AuditLogCreate, db: Session = Depends(get_db)):
+    db_entry = AuditLogDB(
+        action=entry.action,
+        entity_type=entry.entity_type,
+        entity_id=entry.entity_id,
+        details=entry.details,
+        timestamp=time.time()
+    )
+    db.add(db_entry)
+    db.commit()
+    db.refresh(db_entry)
+    return db_entry
+
 # --- EVIDENCE VAULT & FORENSIC DOSSIER ---
 @router.get("/evidence")
 def list_evidence_vault(offset: int = 0, limit: int = 50, db: Session = Depends(get_db)):
@@ -706,6 +744,25 @@ def get_ai_analysis():
                 })
     return analyses
 
+@router.get("/cameras/{camera_id}/activity-analysis")
+def get_camera_activity_analysis(camera_id: str):
+    import time
+    from backend.app.main import active_pipelines
+    pipe = active_pipelines.get(camera_id)
+    if pipe and hasattr(pipe, "get_live_activity_analysis"):
+        return pipe.get_live_activity_analysis()
+    return {
+        "camera_id": camera_id,
+        "camera_name": "Camera Offline / Reconnecting",
+        "sector": "Sector Alpha",
+        "framing_overview": "OFFLINE",
+        "active_tracks_count": 0,
+        "tracks": [],
+        "pose_model_status": "UNAVAILABLE (yolov8n-pose.pt not loaded)",
+        "weapon_model_status": "UNAVAILABLE (small_arms_yolov8.pt not loaded)",
+        "timestamp": time.time()
+    }
+
 @router.get("/system/mode")
 def get_mode():
     from backend.app.main import system_mode
@@ -732,3 +789,110 @@ def stop_demo():
     from backend.app.main import stop_demo_mode
     stop_demo_mode()
     return {"status": "stopped"}
+
+# --- AUTHORIZED ENTITIES & VEHICLE INTELLIGENCE ---
+
+@router.get("/vehicles/authorized", response_model=List[AuthorizedVehicleOut])
+def get_authorized_vehicles(db: Session = Depends(get_db)):
+    from backend.app.database.models import AuthorizedVehicleDB
+    return db.query(AuthorizedVehicleDB).order_by(AuthorizedVehicleDB.created_at.desc()).all()
+
+@router.post("/vehicles/authorized", response_model=AuthorizedVehicleOut)
+def add_authorized_vehicle(veh: AuthorizedVehicleCreate, db: Session = Depends(get_db)):
+    from backend.app.database.models import AuthorizedVehicleDB
+    clean_plate = veh.plate.strip().upper().replace(" ", "").replace("-", "")
+    existing = db.query(AuthorizedVehicleDB).filter(AuthorizedVehicleDB.plate == clean_plate).first()
+    if existing:
+        for k, v in veh.model_dump().items():
+            if k != "plate" and v is not None:
+                setattr(existing, k, v)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    
+    new_v = AuthorizedVehicleDB(
+        plate=clean_plate,
+        owner_name=veh.owner_name,
+        department=veh.department or "Border Security Force",
+        vehicle_type=veh.vehicle_type or "SUV",
+        authorized_color=veh.authorized_color.upper() if veh.authorized_color else "WHITE",
+        authorized_sectors=veh.authorized_sectors or "Sector Alpha, Sector Bravo",
+        status=veh.status or "ACTIVE",
+        notes=veh.notes
+    )
+    db.add(new_v)
+    db.commit()
+    db.refresh(new_v)
+    return new_v
+
+@router.delete("/vehicles/authorized/{plate}")
+def delete_authorized_vehicle(plate: str, db: Session = Depends(get_db)):
+    from backend.app.database.models import AuthorizedVehicleDB
+    clean_plate = plate.strip().upper().replace(" ", "").replace("-", "")
+    v = db.query(AuthorizedVehicleDB).filter(AuthorizedVehicleDB.plate == clean_plate).first()
+    if v:
+        db.delete(v)
+        db.commit()
+        return {"status": "deleted", "plate": clean_plate}
+    raise HTTPException(status_code=404, detail="Vehicle not found in authorized registry")
+
+@router.post("/vehicles/verify")
+def verify_vehicle_intel(payload: dict, db: Session = Depends(get_db)):
+    from backend.app.services.vehicle_intel import vehicle_intel_service
+    plate = payload.get("plate", "")
+    color = payload.get("detected_color", "UNKNOWN")
+    sector = payload.get("sector", "Sector Alpha")
+    return vehicle_intel_service.verify_vehicle(db, plate, color, sector)
+
+@router.get("/vehicles/handoff")
+def get_vehicle_handoff(camera_id: str):
+    from backend.app.services.vehicle_intel import vehicle_intel_service
+    res = vehicle_intel_service.predict_handoff(camera_id)
+    return res or {
+        "current_camera": camera_id, 
+        "predicted_next_camera": "NONE", 
+        "estimated_time_seconds": 0, 
+        "correlation_confidence": 0.0,
+        "trajectory_heading": "Stationary"
+    }
+
+@router.get("/personnel/authorized", response_model=List[AuthorizedPersonOut])
+def get_authorized_personnel(db: Session = Depends(get_db)):
+    from backend.app.database.models import AuthorizedPersonDB
+    return db.query(AuthorizedPersonDB).order_by(AuthorizedPersonDB.created_at.desc()).all()
+
+@router.post("/personnel/authorized", response_model=AuthorizedPersonOut)
+def add_authorized_person(pers: AuthorizedPersonCreate, db: Session = Depends(get_db)):
+    from backend.app.database.models import AuthorizedPersonDB
+    pid = pers.personnel_id.strip().upper()
+    existing = db.query(AuthorizedPersonDB).filter(AuthorizedPersonDB.personnel_id == pid).first()
+    if existing:
+        for k, v in pers.model_dump().items():
+            if k != "personnel_id" and v is not None:
+                setattr(existing, k, v)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    new_p = AuthorizedPersonDB(
+        personnel_id=pid,
+        full_name=pers.full_name,
+        role=pers.role or "Patrol Guard",
+        clearance_level=pers.clearance_level or "RESTRICTED",
+        status=pers.status or "ACTIVE",
+        assigned_sector=pers.assigned_sector or "Sector Alpha"
+    )
+    db.add(new_p)
+    db.commit()
+    db.refresh(new_p)
+    return new_p
+
+@router.delete("/personnel/authorized/{personnel_id}")
+def delete_authorized_person(personnel_id: str, db: Session = Depends(get_db)):
+    from backend.app.database.models import AuthorizedPersonDB
+    pid = personnel_id.strip().upper()
+    p = db.query(AuthorizedPersonDB).filter(AuthorizedPersonDB.personnel_id == pid).first()
+    if p:
+        db.delete(p)
+        db.commit()
+        return {"status": "deleted", "personnel_id": pid}
+    raise HTTPException(status_code=404, detail="Personnel not found in authorized registry")
