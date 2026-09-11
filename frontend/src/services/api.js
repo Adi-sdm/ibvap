@@ -36,9 +36,11 @@ export const getCameraStreamUrl = (id, annotated = true) => `${API_BASE}/cameras
 export const getProfiles = () => fetch(`${API_BASE}/profiles`).then(handleResponse);
 
 // Incidents & Dual Reasoning Events
-export const getEvents = (offset = 0, limit = 25, source = null) => {
+export const getEvents = (offset = 0, limit = 25, source = null, status = null, recentOnly = false) => {
   let url = `${API_BASE}/events?offset=${offset}&limit=${limit}`;
   if (source) url += `&source=${encodeURIComponent(source)}`;
+  if (status) url += `&status=${encodeURIComponent(status)}`;
+  if (recentOnly) url += `&recent_only=true`;
   return fetch(url).then(handleResponse);
 };
 export const getEvent = (id) => fetch(`${API_BASE}/events/${id}`).then(handleResponse);
@@ -104,6 +106,7 @@ export const getAIAnalysis = () => fetch(`${API_BASE}/ai/analysis`).then(handleR
 export const getCameraActivityAnalysis = (cameraId) => fetch(`${API_BASE}/cameras/${encodeURIComponent(cameraId)}/activity-analysis`).then(handleResponse);
 export const getAuditLog = () => fetch(`${API_BASE}/audit-log`).then(r => r.ok ? r.json() : []).catch(() => []);
 export const createAuditLog = (data) => fetch(`${API_BASE}/audit-log`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(handleResponse);
+export const verifyPrivilegedAction = (data) => fetch(`${API_BASE}/auth/verify-privileged`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(handleResponse);
 
 // WebSocket Live Telemetry
 export function connectWebSocket(onMessage) {

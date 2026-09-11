@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldAlert, Lock, AlertTriangle, Key, X, Check, FileText } from 'lucide-react';
-import { createAuditLog } from '../services/api';
+import { verifyPrivilegedAction } from '../services/api';
 
 export default function PrivilegedActionModal({
   isOpen,
@@ -24,7 +24,6 @@ export default function PrivilegedActionModal({
     e.preventDefault();
     setError(null);
 
-    // Simple security validation: passcode required (accepts admin123 or any officer secret)
     if (!passcode.trim()) {
       setError("Supervisor authorization passcode is mandatory.");
       return;
@@ -36,27 +35,30 @@ export default function PrivilegedActionModal({
 
     setSubmitting(true);
     try {
-      // Log to system audit trail
-      await createAuditLog({
-        action: `PRIVILEGED_${actionName.toUpperCase().replace(/\s+/g, '_')}`,
+      const authRes = await verifyPrivilegedAction({
+        passcode: passcode.trim(),
+        officer_role: officerRole,
+        justification: justification.trim(),
+        action: actionName,
         entity_type: entityType,
-        entity_id: entityId ? String(entityId) : undefined,
-        details: JSON.stringify({
-          authorized_by: officerRole,
-          justification: justification.trim(),
-          timestamp: new Date().toISOString()
-        })
-      }).catch(err => console.warn("Audit logging non-blocking error:", err));
+        entity_id: entityId ? String(entityId) : null
+      });
+
+      if (!authRes.authorized) {
+        setError(authRes.detail || "Authorization denied: Invalid supervisor passcode.");
+        return;
+      }
 
       // Execute privileged action
       await onConfirm({
         officerRole,
-        justification: justification.trim()
+        justification: justification.trim(),
+        auditId: authRes.audit_id
       });
 
       onClose();
     } catch (err) {
-      setError("Authorization failed: " + (err.message || err));
+      setError(err.message || "Authorization failed during verification.");
     } finally {
       setSubmitting(false);
     }

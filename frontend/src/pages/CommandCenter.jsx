@@ -39,8 +39,12 @@ export default function CommandCenter({ stats, cameras = [], incidents = [], onS
     return () => clearInterval(interval);
   }, []);
 
-  // Determine highest priority incident requiring attention
-  const priorityIncident = incidents.find(i => (i.severity === 'Critical' || i.severity === 'High') && i.status === 'NEW') || incidents[0] || null;
+  // Determine highest priority incident requiring attention (strictly active NEW incidents only)
+  const priorityIncident = (stats.active_incidents > 0 || stats.active_incidents === undefined)
+    ? (incidents.find(i => (i.severity === 'Critical' || i.severity === 'High') && i.status === 'NEW')
+       || incidents.find(i => i.status === 'NEW')
+       || null)
+    : null;
 
   const handleQuickAcknowledge = async (eventId, e) => {
     e.stopPropagation();
@@ -133,15 +137,28 @@ export default function CommandCenter({ stats, cameras = [], incidents = [], onS
           <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
             <div className="px-5 py-3.5 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center space-x-2.5">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
-                </span>
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-200">
-                  PRIORITY INCIDENT FEED // IMMEDIATE ATTENTION REQUIRED
-                </span>
+                {priorityIncident ? (
+                  <>
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                    </span>
+                    <span className="text-xs font-mono font-bold uppercase tracking-wider text-rose-400">
+                      PRIORITY INCIDENT FEED // IMMEDIATE ATTENTION REQUIRED
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                    <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400">
+                      SYSTEM STATUS // DEFENSE POSTURE: NORMAL
+                    </span>
+                  </>
+                )}
               </div>
-              <span className="text-[11px] font-mono text-slate-500">REAL-TIME OPERATOR QUEUE</span>
+              <span className="text-[11px] font-mono text-slate-500">
+                {priorityIncident ? 'REAL-TIME OPERATOR QUEUE' : '0 ACTIVE PERIMETER THREATS'}
+              </span>
             </div>
 
             <div className="p-6">
@@ -250,14 +267,14 @@ export default function CommandCenter({ stats, cameras = [], incidents = [], onS
                   </div>
                 </div>
               ) : (
-                <div className="py-12 text-center space-y-3">
+                <div className="py-12 text-center space-y-3 font-mono">
                   <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 mx-auto flex items-center justify-center text-emerald-400">
                     <CheckCircle className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-200">All Sectors Nominal</h3>
-                    <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-                      Zero active security anomalies detected. Continuous AI border surveillance and ByteTrack persistence monitoring are operational.
+                    <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wide">SYSTEM STATUS: NORMAL</h3>
+                    <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto font-sans">
+                      Perimeter sector secure. 0 active threats detected. Continuous YOLOv8 vision analytics and ByteTrack persistence monitoring are operational.
                     </p>
                   </div>
                 </div>
@@ -302,22 +319,8 @@ export default function CommandCenter({ stats, cameras = [], incidents = [], onS
                   </div>
                 ))
               ) : (
-                <div className="space-y-2 text-xs font-mono text-slate-400">
-                  <div className="flex items-center space-x-3 p-2 rounded bg-slate-950/40 border border-slate-800/40">
-                    <span className="text-slate-500">18:42:01</span>
-                    <span className="text-emerald-400 font-semibold">DETECTION STARTED</span>
-                    <span className="text-slate-300">YOLOv8 inference active on Sector North 01</span>
-                  </div>
-                  <div className="flex items-center space-x-3 p-2 rounded bg-slate-950/40 border border-slate-800/40">
-                    <span className="text-slate-500">18:42:04</span>
-                    <span className="text-cyan-400 font-semibold">TRACKING ESTABLISHED</span>
-                    <span className="text-slate-300">ByteTrack assigned persistent ID #104</span>
-                  </div>
-                  <div className="flex items-center space-x-3 p-2 rounded bg-slate-950/40 border border-slate-800/40">
-                    <span className="text-slate-500">18:42:08</span>
-                    <span className="text-amber-400 font-semibold">BEHAVIOUR ANALYZED</span>
-                    <span className="text-slate-300">Displacement velocity: Running vector towards border fence</span>
-                  </div>
+                <div className="py-6 text-center text-slate-500 text-xs font-mono border border-dashed border-slate-800/80 rounded bg-slate-950/30">
+                  No recent activity events recorded — AI surveillance pipeline active.
                 </div>
               )}
             </div>

@@ -17,13 +17,15 @@ import {
   Layers, 
   RotateCw,
   X,
-  ExternalLink
+  ExternalLink,
+  Plus
 } from 'lucide-react';
 import { 
   getCameraStreamUrl, 
   getSystemSettings, 
   updateSystemSettings, 
-  updateCameraConfig 
+  updateCameraConfig,
+  createCamera
 } from '../services/api';
 
 // Geodesic coordinate calculation for circular sector FOV cone
@@ -89,6 +91,15 @@ export default function GISMap({ cameras = [], incidents = [], onNavigateToCamer
   const [tempRange, setTempRange] = useState(150);
   const [savingPosition, setSavingPosition] = useState(false);
 
+  // Add Camera Directly on Map Mode
+  const [addCameraMode, setAddCameraMode] = useState(false);
+  const [newCamData, setNewCamData] = useState(null);
+  const [creatingCam, setCreatingCam] = useState(false);
+  const addCameraModeRef = useRef(false);
+  addCameraModeRef.current = addCameraMode;
+  const calibrationCamIdRef = useRef(null);
+  calibrationCamIdRef.current = calibrationCamId;
+
   // Load operational area from system settings
   useEffect(() => {
     getSystemSettings()
@@ -142,19 +153,31 @@ export default function GISMap({ cameras = [], incidents = [], onNavigateToCamer
     // Click handler on map
     map.on('click', (e) => {
       const { lat, lng } = e.latlng;
-      setTempCoords(prev => {
-        if (calibrationCamId) {
-          return { lat: parseFloat(lat.toFixed(6)), lng: parseFloat(lng.toFixed(6)) };
-        }
-        return prev;
-      });
+      const roundedLat = parseFloat(lat.toFixed(6));
+      const roundedLng = parseFloat(lng.toFixed(6));
 
-      if (!calibrationCamId) {
-        setTargetPoint({
-          lat: parseFloat(lat.toFixed(6)),
-          lng: parseFloat(lng.toFixed(6))
+      if (addCameraModeRef.current) {
+        setNewCamData({
+          name: `Sector Node (${roundedLat.toFixed(3)}, ${roundedLng.toFixed(3)})`,
+          rtsp_url: '0',
+          sector: 'Perimeter Sector',
+          latitude: roundedLat,
+          longitude: roundedLng,
+          direction: 0,
+          fov_degrees: 60,
+          range_meters: 150,
+          profile: 'PERIMETER_DEFENSE'
         });
+        setAddCameraMode(false);
+        return;
       }
+
+      if (calibrationCamIdRef.current) {
+        setTempCoords({ lat: roundedLat, lng: roundedLng });
+        return;
+      }
+
+      setTargetPoint({ lat: roundedLat, lng: roundedLng });
     });
 
     return () => {
@@ -407,6 +430,21 @@ export default function GISMap({ cameras = [], incidents = [], onNavigateToCamer
     }
   };
 
+  const handleCreateNewCamOnMap = async (e) => {
+    e.preventDefault();
+    if (!newCamData) return;
+    setCreatingCam(true);
+    try {
+      await createCamera(newCamData);
+      setNewCamData(null);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      alert("Failed to deploy camera: " + err.message);
+    } finally {
+      setCreatingCam(false);
+    }
+  };
+
   // Distance calculation from target point
   const nearestDistanceInfo = useMemo(() => {
     if (!targetPoint || !mapInstanceRef.current) return null;
@@ -453,6 +491,20 @@ export default function GISMap({ cameras = [], incidents = [], onNavigateToCamer
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Add Camera on Map Toggle */}
+          <button
+            onClick={() => setAddCameraMode(prev => !prev)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded font-mono border transition-colors ${
+              addCameraMode 
+                ? 'bg-emerald-600 border-emerald-500 text-white shadow animate-pulse' 
+                : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+            }`}
+            title="Click on map to place new camera"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>{addCameraMode ? 'Click Map to Place...' : 'Add Camera on Map'}</span>
+          </button>
+
           {/* Tile Layer Toggle */}
           <button
             onClick={() => setBaseMapLayer(prev => prev === 'osm' ? 'satellite' : 'osm')}
@@ -767,6 +819,116 @@ export default function GISMap({ cameras = [], incidents = [], onNavigateToCamer
             )}
           </div>
         </div>
+
+        {/* Modal: Register New Camera Placed on Map */}
+        {newCamData && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 font-mono text-xs">
+            <div className="bg-slate-900 border border-emerald-500/60 rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                  <Camera className="w-4 h-4" />
+                  <span>REGISTER CAMERA ON MAP</span>
+                </div>
+                <button onClick={() => setNewCamData(null)} className="text-slate-400 hover:text-white">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-2.5 rounded bg-slate-950 border border-slate-800 text-[11px] text-emerald-400">
+                Coordinates: {newCamData.latitude.toFixed(6)}, {newCamData.longitude.toFixed(6)}
+              </div>
+
+              <form onSubmit={handleCreateNewCamOnMap} className="space-y-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">Camera Name:</label>
+                  <input
+                    type="text"
+                    required
+                    value={newCamData.name}
+                    onChange={e => setNewCamData({ ...newCamData, name: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-slate-100 text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1">Stream Source (RTSP URL or Device Index '0'):</label>
+                  <input
+                    type="text"
+                    required
+                    value={newCamData.rtsp_url}
+                    onChange={e => setNewCamData({ ...newCamData, rtsp_url: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-slate-100 text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-400 mb-1">Sector:</label>
+                    <input
+                      type="text"
+                      value={newCamData.sector}
+                      onChange={e => setNewCamData({ ...newCamData, sector: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-slate-100 text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 mb-1">Azimuth Heading (°):</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="359"
+                      value={newCamData.direction}
+                      onChange={e => setNewCamData({ ...newCamData, direction: parseInt(e.target.value) || 0 })}
+                      className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-slate-100 text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-400 mb-1">FOV Aperture (°):</label>
+                    <input
+                      type="number"
+                      min="15"
+                      max="120"
+                      value={newCamData.fov_degrees}
+                      onChange={e => setNewCamData({ ...newCamData, fov_degrees: parseInt(e.target.value) || 60 })}
+                      className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-slate-100 text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 mb-1">Range (Meters):</label>
+                    <input
+                      type="number"
+                      min="30"
+                      max="500"
+                      value={newCamData.range_meters}
+                      onChange={e => setNewCamData({ ...newCamData, range_meters: parseInt(e.target.value) || 150 })}
+                      className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-slate-100 text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setNewCamData(null)}
+                    className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={creatingCam}
+                    className="px-4 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition disabled:opacity-50"
+                  >
+                    {creatingCam ? 'Deploying...' : 'Deploy Camera'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

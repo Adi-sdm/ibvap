@@ -42,17 +42,29 @@ export default function Incidents({ onSelectIncident }) {
   const [operatorNotes, setOperatorNotes] = useState('');
   const [notesSaving, setNotesSaving] = useState(false);
 
+  const [activeTab, setActiveTab] = useState('ACTIVE'); // 'ACTIVE', 'ARCHIVE', 'DEMO'
+
   const loadData = async (selectFirst = false) => {
     setLoading(true);
     try {
       const offset = (page - 1) * limit;
-      const res = await getEvents(offset, limit);
+      let res;
+      if (activeTab === 'ACTIVE') {
+        res = await getEvents(offset, limit, 'LIVE', 'NEW', true);
+      } else if (activeTab === 'ARCHIVE') {
+        res = await getEvents(offset, limit, 'LIVE');
+      } else {
+        res = await getEvents(offset, limit, 'DEMO');
+      }
       const items = res.items || [];
       setIncidents(items);
       setTotal(res.total || 0);
       if ((selectFirst || !selectedIncident) && items.length > 0) {
         setSelectedIncident(items[0]);
         setOperatorNotes(items[0].notes || '');
+      } else if (items.length === 0) {
+        setSelectedIncident(null);
+        setOperatorNotes('');
       }
     } catch (err) {
       console.error(err);
@@ -63,7 +75,7 @@ export default function Incidents({ onSelectIncident }) {
 
   useEffect(() => {
     loadData(true);
-  }, [page]);
+  }, [page, activeTab]);
 
   const filtered = incidents.filter(i => {
     if (filterSeverity !== 'ALL' && i.severity !== filterSeverity) return false;
@@ -130,6 +142,60 @@ export default function Incidents({ onSelectIncident }) {
 
   return (
     <div className="p-6 space-y-4 max-w-7xl mx-auto">
+      {/* Incident Category Triage Tabs */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-lg p-3">
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => { setActiveTab('ACTIVE'); setPage(1); }}
+            className={`px-3.5 py-1.5 rounded text-xs font-mono font-bold transition flex items-center space-x-2 ${
+              activeTab === 'ACTIVE'
+                ? 'bg-emerald-600 text-white shadow'
+                : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full ${activeTab === 'ACTIVE' ? 'bg-white' : 'bg-emerald-400'}`}></span>
+            <span>ACTIVE INCIDENTS</span>
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('ARCHIVE'); setPage(1); }}
+            className={`px-3.5 py-1.5 rounded text-xs font-mono font-bold transition flex items-center space-x-2 ${
+              activeTab === 'ARCHIVE'
+                ? 'bg-slate-700 text-white shadow'
+                : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <span>HISTORICAL ARCHIVE</span>
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('DEMO'); setPage(1); }}
+            className={`px-3.5 py-1.5 rounded text-xs font-mono font-bold transition flex items-center space-x-2 ${
+              activeTab === 'DEMO'
+                ? 'bg-amber-600 text-white shadow'
+                : 'bg-slate-950 border border-slate-800 text-amber-400 hover:text-amber-300'
+            }`}
+          >
+            <span>DEMO INCIDENTS</span>
+            <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+              DEMO DATA
+            </span>
+          </button>
+        </div>
+
+        {activeTab === 'DEMO' ? (
+          <div className="text-[11px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded flex items-center space-x-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            <span>SYNTHETIC EVALUATION DATASET — NOT REAL SENSOR TELEMETRY</span>
+          </div>
+        ) : (
+          <div className="text-[11px] font-mono text-slate-400 flex items-center space-x-2">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            <span>LIVE SENSOR PIPELINE</span>
+          </div>
+        )}
+      </div>
+
       {/* Header & Global Filters */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-lg p-4">
         <div>
@@ -198,8 +264,22 @@ export default function Incidents({ onSelectIncident }) {
 
           <div className="divide-y divide-slate-800/60 overflow-y-auto max-h-[640px]">
             {filtered.length === 0 && !loading && (
-              <div className="p-8 text-center text-slate-500 text-xs font-mono">
-                No incidents found matching the selected filters.
+              <div className="p-8 text-center space-y-2 font-mono">
+                <div className="w-8 h-8 rounded-full bg-emerald-500/10 border border-emerald-500/20 mx-auto flex items-center justify-center text-emerald-400">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+                <div className="text-xs font-bold text-slate-200">
+                  {activeTab === 'ACTIVE' 
+                    ? 'No Active Incidents' 
+                    : (activeTab === 'DEMO' ? 'No Demo Incidents' : 'No Incidents Found')}
+                </div>
+                <div className="text-[11px] text-slate-400 font-sans">
+                  {activeTab === 'ACTIVE' 
+                    ? 'Perimeter sector secure. All active camera boundaries nominal.' 
+                    : (activeTab === 'DEMO' 
+                        ? 'Synthetic evaluation feed empty. Add a test video camera to populate demo incidents.' 
+                        : 'No historical records matched filter parameters.')}
+                </div>
               </div>
             )}
             {loading && (
@@ -536,8 +616,20 @@ export default function Incidents({ onSelectIncident }) {
               </div>
             </>
           ) : (
-            <div className="p-16 text-center text-slate-500 text-xs font-mono">
-              Select an incident from the queue on the left to inspect the forensic dossier.
+            <div className="py-24 text-center space-y-3 font-mono">
+              <div className="w-12 h-12 rounded-full bg-slate-800/60 border border-slate-700/60 mx-auto flex items-center justify-center text-slate-400">
+                <ShieldCheck className="w-6 h-6 text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wide">
+                  {activeTab === 'ACTIVE' ? 'Perimeter Sector Secure' : 'No Incident Selected'}
+                </h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto font-sans">
+                  {activeTab === 'ACTIVE'
+                    ? '0 active incidents currently require operator attention. Continuous AI tracking active across connected cameras.'
+                    : 'Select an incident from the queue on the left to inspect the complete forensic dossier, neural telemetry, and SHA-256 evidence record.'}
+                </p>
+              </div>
             </div>
           )}
         </div>

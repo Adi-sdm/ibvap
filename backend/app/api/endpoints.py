@@ -15,6 +15,7 @@ from backend.app.models.schemas import (
     CameraCreate, CameraOut, CameraConfigUpdate, VirtualZoneCreate, VirtualZoneOut, 
     EventOut, EventStatusUpdate, EventFeedbackUpdate, ANPROut,
     CameraTestRequest, CameraTestResponse, SystemStats, AuditLogOut, AuditLogCreate,
+    PrivilegedAuthRequest, PrivilegedAuthResponse,
     EvidenceVaultItem, ActivityTimelineItem, AITrackAnalysis, AISensitivityConfig,
     SystemConfigOut, SystemConfigUpdate, GeminiStatusResponse, GeminiConfigUpdate, GeminiTestRequest,
     AuthorizedVehicleCreate, AuthorizedVehicleOut, AuthorizedPersonCreate, AuthorizedPersonOut
@@ -27,9 +28,14 @@ router = APIRouter()
 
 # --- CAMERAS ---
 @router.get("/cameras", response_model=List[CameraOut])
-def list_cameras(include_demo: bool = False, db: Session = Depends(get_db)):
+def list_cameras(source: Optional[str] = None, include_demo: bool = False, db: Session = Depends(get_db)):
     query = db.query(CameraDB)
-    if not include_demo:
+    if source:
+        if source.upper() == "LIVE":
+            query = query.filter(CameraDB.is_demo == False)
+        elif source.upper() == "DEMO":
+            query = query.filter(CameraDB.is_demo == True)
+    elif not include_demo:
         query = query.filter(CameraDB.is_demo == False)
     cams = query.all()
     # Ensure JSON parsing for modules and overlay if stored as strings
@@ -309,7 +315,9 @@ def list_events(
     limit: int = 50, 
     severity: Optional[str] = None,
     event_type: Optional[str] = None,
+    status: Optional[str] = None,
     source: Optional[str] = None,
+    recent_only: bool = False,
     include_demo: bool = False,
     db: Session = Depends(get_db)
 ):
@@ -321,6 +329,10 @@ def list_events(
             query = query.filter(EventDB.is_demo == False)
     elif not include_demo:
         query = query.filter(EventDB.is_demo == False)
+    if status:
+        query = query.filter(EventDB.status == status)
+    if recent_only:
+        query = query.filter(EventDB.timestamp >= time.time() - 900.0)
     if severity:
         query = query.filter(EventDB.severity == severity)
     if event_type:
@@ -600,10 +612,94 @@ def record_audit_action(entry: AuditLogCreate, db: Session = Depends(get_db)):
     db.refresh(db_entry)
     return db_entry
 
+@router.post("/auth/verify-privileged", response_model=PrivilegedAuthResponse)
+def verify_privileged_action(payload: PrivilegedAuthRequest, db: Session = Depends(get_db)):
+    # 1. Operational justification validation (mandatory >= 5 characters)
+    if not payload.justification or len(payload.justification.strip()) < 5:
+        db_entry = AuditLogDB(
+            action=f"REJECTED_{payload.action.upper()}",
+            entity_type=payload.entity_type,
+            entity_id=payload.entity_id,
+            details=json.dumps({
+                "authorized_by": payload.officer_role,
+                "reason": "Missing or insufficient operational justification (<5 characters)",
+                "timestamp": time.time()
+            }),
+            timestamp=time.time()
+        )
+        db.add(db_entry)
+        db.commit()
+        return PrivilegedAuthResponse(
+            authorized=False,
+            detail="Operational justification must be at least 5 characters."
+        )
+
+    # 2. Configurable supervisor authorization credential
+    cfg_row = db.query(SystemConfigDB).filter(SystemConfigDB.key == "supervisor_passcode").first()
+    expected_passcode = cfg_row.value.strip() if (cfg_row and cfg_row.value) else "admin123"
+
+    # 3. Credential verification
+    if payload.passcode.strip() != expected_passcode:
+        db_entry = AuditLogDB(
+            action=f"FAILED_{payload.action.upper()}",
+            entity_type=payload.entity_type,
+            entity_id=payload.entity_id,
+            details=json.dumps({
+                "authorized_by": payload.officer_role,
+                "reason": "Invalid supervisor passcode",
+                "timestamp": time.time()
+            }),
+            timestamp=time.time()
+        )
+        db.add(db_entry)
+        db.commit()
+        return PrivilegedAuthResponse(
+            authorized=False,
+            detail="Authorization failed: Invalid supervisor passcode."
+        )
+
+    # 4. Approved & logged to immutable audit trail
+    db_entry = AuditLogDB(
+        action=f"APPROVED_{payload.action.upper()}",
+        entity_type=payload.entity_type,
+        entity_id=payload.entity_id,
+        details=json.dumps({
+            "authorized_by": payload.officer_role,
+            "justification": payload.justification.strip(),
+            "timestamp": time.time()
+        }),
+        timestamp=time.time()
+    )
+    db.add(db_entry)
+    db.commit()
+    db.refresh(db_entry)
+
+    return PrivilegedAuthResponse(
+        authorized=True,
+        detail="Authorization approved.",
+        audit_id=db_entry.id,
+        timestamp=db_entry.timestamp
+    )
+
 # --- EVIDENCE VAULT & FORENSIC DOSSIER ---
 @router.get("/evidence")
-def list_evidence_vault(offset: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+def list_evidence_vault(
+    source: Optional[str] = None,
+    camera_id: Optional[str] = None,
+    offset: int = 0, 
+    limit: int = 50, 
+    db: Session = Depends(get_db)
+):
     query = db.query(EvidenceDB)
+    if source or camera_id:
+        query = query.join(EventDB, EvidenceDB.event_id == EventDB.event_id)
+        if source:
+            if source.upper() == "LIVE":
+                query = query.filter(EventDB.is_demo == False)
+            elif source.upper() == "DEMO":
+                query = query.filter(EventDB.is_demo == True)
+        if camera_id:
+            query = query.filter(EventDB.camera_id == camera_id)
     total = query.count()
     records = query.order_by(EvidenceDB.created_at.desc()).offset(offset).limit(limit).all()
     

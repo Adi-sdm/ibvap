@@ -184,6 +184,20 @@ class AuditLogOut(BaseModel):
     created_at: Any
     model_config = ConfigDict(from_attributes=True)
 
+class PrivilegedAuthRequest(BaseModel):
+    passcode: str
+    officer_role: str = "Duty Commander"
+    action: str = "PRIVILEGED_ACTION"
+    justification: str = ""
+    entity_type: Optional[str] = "SYSTEM"
+    entity_id: Optional[str] = None
+
+class PrivilegedAuthResponse(BaseModel):
+    authorized: bool
+    detail: str
+    audit_id: Optional[int] = None
+    timestamp: Optional[float] = None
+
 class EvidenceVaultItem(BaseModel):
     event_id: str
     camera_id: str
