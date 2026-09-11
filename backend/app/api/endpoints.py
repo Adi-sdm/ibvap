@@ -552,7 +552,11 @@ def get_system_settings(db: Session = Depends(get_db)):
         gemini_model=cfg_map.get("gemini_model", "gemini-2.0-flash"),
         gemini_low_conf_threshold=float(cfg_map.get("gemini_low_conf_threshold", 0.45)),
         gemini_auto_trigger=cfg_map.get("gemini_auto_trigger", "true").lower() in ["true", "1"],
-        cooldown_seconds=int(cfg_map.get("cooldown_seconds", 15))
+        cooldown_seconds=int(cfg_map.get("cooldown_seconds", 15)),
+        operational_area_lat=float(cfg_map.get("operational_area_lat")) if cfg_map.get("operational_area_lat") else None,
+        operational_area_lng=float(cfg_map.get("operational_area_lng")) if cfg_map.get("operational_area_lng") else None,
+        operational_area_name=cfg_map.get("operational_area_name"),
+        operational_area_radius=float(cfg_map.get("operational_area_radius", 1000.0))
     )
 
 @router.patch("/settings", response_model=SystemConfigOut)

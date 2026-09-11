@@ -42,6 +42,8 @@ export default function App() {
   };
 
   useEffect(() => {
+    const savedTheme = localStorage.getItem('ibvap_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
     loadData();
 
     const disconnect = connectWebSocket((msg) => {

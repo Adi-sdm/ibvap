@@ -29,3 +29,59 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
+
+/* Glass Command Visual System */
+[data-theme="glass"] body {
+  background: radial-gradient(circle at 20% 20%, #0f172a 0%, #020617 80%);
+}
+[data-theme="glass"] .bg-slate-900 {
+  background-color: rgba(15, 23, 42, 0.75) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border-color: rgba(51, 65, 85, 0.7) !important;
+}
+[data-theme="glass"] .bg-slate-950 {
+  background-color: rgba(2, 6, 23, 0.85) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+}
+
+/* Crucial: Video feeds and surveillance frame streams are NEVER blurred */
+video, img, .aspect-video, .stream-viewport {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+}
+
+/* Clean Light Mode */
+[data-theme="light"] body {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+[data-theme="light"] main {
+  background-color: #f8fafc !important;
+}
+[data-theme="light"] .bg-slate-900 {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+[data-theme="light"] .bg-slate-950 {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+[data-theme="light"] .text-slate-100,
+[data-theme="light"] .text-white {
+  color: #0f172a !important;
+}
+[data-theme="light"] .text-slate-300,
+[data-theme="light"] .text-slate-200 {
+  color: #334155 !important;
+}
+[data-theme="light"] .text-slate-400 {
+  color: #64748b !important;
+}
+[data-theme="light"] .border-slate-800 {
+  border-color: #cbd5e1 !important;
+}

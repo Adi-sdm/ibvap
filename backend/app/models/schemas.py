@@ -239,6 +239,10 @@ class SystemConfigOut(BaseModel):
     gemini_low_conf_threshold: float = 0.45
     gemini_auto_trigger: bool = True
     cooldown_seconds: int = 15
+    operational_area_lat: Optional[float] = None
+    operational_area_lng: Optional[float] = None
+    operational_area_name: Optional[str] = None
+    operational_area_radius: Optional[float] = 1000.0
 
 class SystemConfigUpdate(BaseModel):
     detection_conf: Optional[float] = None
@@ -251,6 +255,10 @@ class SystemConfigUpdate(BaseModel):
     gemini_low_conf_threshold: Optional[float] = None
     gemini_auto_trigger: Optional[bool] = None
     cooldown_seconds: Optional[int] = None
+    operational_area_lat: Optional[float] = None
+    operational_area_lng: Optional[float] = None
+    operational_area_name: Optional[str] = None
+    operational_area_radius: Optional[float] = None
 
 class GeminiStatusResponse(BaseModel):
     configured: bool
