@@ -30,24 +30,133 @@
   background: #475569;
 }
 
-/* Glass Command Visual System */
-[data-theme="glass"] body {
-  background: radial-gradient(circle at 20% 20%, #0f172a 0%, #020617 80%);
-}
-[data-theme="glass"] .bg-slate-900 {
-  background-color: rgba(15, 23, 42, 0.75) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
-  border-color: rgba(51, 65, 85, 0.7) !important;
-}
-[data-theme="glass"] .bg-slate-950 {
-  background-color: rgba(2, 6, 23, 0.85) !important;
-  backdrop-filter: blur(8px) !important;
-  -webkit-backdrop-filter: blur(8px) !important;
+/* Glass Command True Premium Glassmorphism Visual System */
+[data-theme="glass"] {
+  --glass-bg-base: #030712;
 }
 
-/* Crucial: Video feeds and surveillance frame streams are NEVER blurred */
-video, img, canvas, .aspect-video, .stream-viewport {
+[data-theme="glass"] body {
+  background-color: #030712 !important;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Ambient Blurred Light Orbs Layer - strictly behind all UI surfaces */
+[data-theme="glass"] .ambient-glow-layer {
+  display: block !important;
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+[data-theme="dark"] .ambient-glow-layer,
+[data-theme="light"] .ambient-glow-layer {
+  display: none !important;
+}
+
+.ambient-orb-1 {
+  position: absolute;
+  top: -12%;
+  left: 10%;
+  width: 700px;
+  height: 700px;
+  background: radial-gradient(circle, rgba(79, 70, 229, 0.32) 0%, rgba(59, 130, 246, 0.18) 45%, transparent 70%);
+  filter: blur(80px);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.ambient-orb-2 {
+  position: absolute;
+  top: 35%;
+  right: 2%;
+  width: 620px;
+  height: 620px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.26) 0%, rgba(14, 116, 144, 0.14) 45%, transparent 70%);
+  filter: blur(85px);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.ambient-orb-3 {
+  position: absolute;
+  bottom: -15%;
+  left: 25%;
+  width: 750px;
+  height: 750px;
+  background: radial-gradient(circle, rgba(30, 58, 138, 0.38) 0%, rgba(30, 27, 75, 0.20) 45%, transparent 70%);
+  filter: blur(95px);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* Glass Panels with Layered Translucency, Subtle Borders, and Visible Depth */
+[data-theme="glass"] main {
+  background: transparent !important;
+  position: relative;
+  z-index: 1;
+}
+
+[data-theme="glass"] aside {
+  background-color: rgba(10, 15, 30, 0.70) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4) !important;
+  position: relative;
+  z-index: 20;
+}
+
+[data-theme="glass"] header {
+  background-color: rgba(10, 15, 30, 0.65) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
+  position: relative;
+  z-index: 10;
+}
+
+/* Primary Glass Surfaces */
+[data-theme="glass"] .bg-slate-900 {
+  background-color: rgba(15, 23, 42, 0.55) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37), inset 0 1px 0 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Secondary Glass Elements */
+[data-theme="glass"] .bg-slate-800 {
+  background-color: rgba(30, 41, 59, 0.50) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Deep Base Containers */
+[data-theme="glass"] .bg-slate-950 {
+  background-color: rgba(3, 7, 18, 0.40) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+}
+
+/* Modal / Dialog Glass Surface (Highest depth) */
+[data-theme="glass"] .fixed.inset-0 .bg-slate-900,
+[data-theme="glass"] .fixed.inset-0 .bg-slate-950,
+[data-theme="glass"] [role="dialog"] {
+  background-color: rgba(15, 23, 42, 0.88) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 24px 64px 0 rgba(0, 0, 0, 0.7), inset 0 1px 0 0 rgba(255, 255, 255, 0.15) !important;
+}
+
+/* CRUCIAL SURVEILLANCE VIDEO & SENSOR MEDIA PROTECTION:
+   Surveillance streams, MJPEG feeds, snapshots, crops, canvases are NEVER blurred or filtered */
+video, img, canvas, .aspect-video, .stream-viewport, .leaflet-container {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   filter: none !important;

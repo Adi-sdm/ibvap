@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
         from backend.app.database.models import CameraDB
         db = SessionLocal()
         try:
-            cameras = db.query(CameraDB).filter(CameraDB.is_demo == False).all()
+            cameras = db.query(CameraDB).filter(CameraDB.is_demo == False, CameraDB.is_active == True).all()
             for cam in cameras:
                 start_camera_pipeline(cam.camera_id, cam.rtsp_url, cam)
             print(f"[SYSTEM] Auto-started {len(cameras)} registered camera pipelines.")

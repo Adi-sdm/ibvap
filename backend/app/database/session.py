@@ -64,6 +64,7 @@ def run_safe_migrations():
                 ("fov_degrees", "FLOAT DEFAULT 60.0"),
                 ("range_meters", "FLOAT DEFAULT 150.0"),
                 ("maintenance_details", "TEXT"),
+                ("is_active", "BOOLEAN DEFAULT 1"),
             ]
             for col_name, col_def in cam_columns_to_add:
                 if col_name not in existing_cam_cols:

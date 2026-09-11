@@ -34,7 +34,7 @@ router = APIRouter()
 # --- CAMERAS ---
 @router.get("/cameras", response_model=List[CameraOut])
 def list_cameras(source: Optional[str] = None, include_demo: bool = False, db: Session = Depends(get_db)):
-    query = db.query(CameraDB)
+    query = db.query(CameraDB).filter(CameraDB.is_active == True)
     if source:
         if source.upper() == "LIVE":
             query = query.filter(CameraDB.is_demo == False)
@@ -226,7 +226,8 @@ def delete_camera(camera_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Camera not found")
     
     db.query(VirtualZoneDB).filter(VirtualZoneDB.camera_id == camera_id).delete()
-    db.delete(cam)
+    cam.is_active = False
+    cam.status = "DECOMMISSIONED"
     db.commit()
     
     from backend.app.main import stop_camera_pipeline
@@ -793,7 +794,7 @@ def get_system_stats(source: Optional[str] = None, db: Session = Depends(get_db)
     
     is_demo_filter = (source.upper() == "DEMO") if source else False
     
-    total_cams = db.query(CameraDB).filter(CameraDB.is_demo == is_demo_filter).count()
+    total_cams = db.query(CameraDB).filter(CameraDB.is_demo == is_demo_filter, CameraDB.is_active == True).count()
     active_cams = len(active_pipelines)
     total_events = db.query(EventDB).filter(EventDB.is_demo == is_demo_filter).count()
     
@@ -1036,7 +1037,7 @@ def get_system_status(db: Session = Depends(get_db)):
     emergency = (em_config.value.lower() == "true") if em_config else False
     
     from backend.app.main import system_mode
-    total_cams = db.query(CameraDB).filter(CameraDB.is_demo == False).count()
+    total_cams = db.query(CameraDB).filter(CameraDB.is_demo == False, CameraDB.is_active == True).count()
     
     recent_cutoff = time.time() - 900.0
     active_incidents = db.query(EventDB).filter(
@@ -1103,10 +1104,16 @@ def reset_to_clean(payload: dict, db: Session = Depends(get_db)):
 
     # 3. Clean operational tables
     db.query(VirtualZoneDB).delete()
-    db.query(CameraDB).delete()
+    db.query(CameraDB).update({"is_active": False, "status": "DECOMMISSIONED"})
     db.query(OperationalSectorDB).delete()
     db.query(AuthorizedVehicleDB).delete()
     db.query(AuthorizedPersonDB).delete()
+
+    init_config = db.query(SystemConfigDB).filter(SystemConfigDB.key == "system_initialized").first()
+    if init_config:
+        init_config.value = "false"
+    else:
+        db.add(SystemConfigDB(key="system_initialized", value="false"))
 
     # 4. Audit
     audit = AuditLogDB(
@@ -1145,7 +1152,7 @@ def get_system_readiness(db: Session = Depends(get_db)):
         ))
 
     # 2. Camera Ingestion
-    cams_count = db.query(CameraDB).filter(CameraDB.is_demo == False).count()
+    cams_count = db.query(CameraDB).filter(CameraDB.is_demo == False, CameraDB.is_active == True).count()
     if cams_count > 0:
         subsystems.append(SystemReadinessSubsystem(
             name="Camera Ingestion",
@@ -1160,18 +1167,25 @@ def get_system_readiness(db: Session = Depends(get_db)):
         ))
 
     # 3. AI Inference Model
+    from backend.app.main import MODEL_PATH
     if shared_yolo_model is not None:
         subsystems.append(SystemReadinessSubsystem(
             name="AI Neural Inference",
             status="READY",
             detail="YOLOv8n object detection model loaded and shared across threads"
         ))
+    elif MODEL_PATH.exists():
+        subsystems.append(SystemReadinessSubsystem(
+            name="AI Neural Inference",
+            status="READY",
+            detail=f"YOLOv8n neural weights verified on disk ({MODEL_PATH.name})"
+        ))
     else:
         overall_ready = False
         subsystems.append(SystemReadinessSubsystem(
             name="AI Neural Inference",
             status="NOT READY",
-            detail="YOLOv8n model weights not loaded"
+            detail="YOLOv8n model weights not found on disk"
         ))
 
     # 4. Target Tracking
@@ -1258,7 +1272,16 @@ def get_system_readiness(db: Session = Depends(get_db)):
             detail="Gemini API unconfigured. System operating truthfully in LOCAL ONLY mode."
         ))
 
-    overall_status = "SYSTEM READY" if overall_ready else "NOT READY"
+    init_config = db.query(SystemConfigDB).filter(SystemConfigDB.key == "system_initialized").first()
+    is_init = (init_config.value.lower() == "true") if init_config else False
+
+    if not is_init:
+        overall_status = "INITIALIZATION REQUIRED"
+    elif overall_ready:
+        overall_status = "SYSTEM READY"
+    else:
+        overall_status = "NOT READY"
+
     return SystemReadinessReport(
         overall_status=overall_status,
         timestamp=time.time(),

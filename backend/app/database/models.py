@@ -27,6 +27,7 @@ class CameraDB(Base):
     fov_degrees = Column(Float, default=60.0)
     range_meters = Column(Float, default=150.0)
     is_demo = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
     maintenance_details = Column(Text, nullable=True) # JSON: in_maintenance, enabled_by, reason, start_time, duration_minutes
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 

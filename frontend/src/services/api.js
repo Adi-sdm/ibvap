@@ -133,3 +133,19 @@ export function connectWebSocket(onMessage) {
     if (ws) ws.close();
   };
 }
+
+// Deployment Architecture, Readiness & Configuration
+export const getSystemStatus = () => fetch(`${API_BASE}/system/status`).then(handleResponse);
+export const initializeSystem = () => fetch(`${API_BASE}/system/initialize`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' }).then(handleResponse);
+export const resetToClean = (payload) => fetch(`${API_BASE}/system/reset-clean`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) }).then(handleResponse);
+export const getSystemReadiness = () => fetch(`${API_BASE}/system/readiness`).then(handleResponse);
+export const exportConfiguration = () => fetch(`${API_BASE}/config/export`).then(handleResponse);
+export const importConfiguration = (configuration) => fetch(`${API_BASE}/config/import`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ configuration }) }).then(handleResponse);
+export const getConfigHistory = (limit = 50) => fetch(`${API_BASE}/config/history?limit=${limit}`).then(handleResponse);
+export const setCameraMaintenance = (cameraId, payload) => fetch(`${API_BASE}/cameras/${encodeURIComponent(cameraId)}/maintenance`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) }).then(handleResponse);
+export const setEmergencyMode = (emergency_mode, officer = 'Senior Supervisor', justification = 'Tactical threat escalation') => fetch(`${API_BASE}/system/emergency-mode`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ emergency_mode, officer, justification }) }).then(handleResponse);
+
+// Operational Sectors
+export const getSectors = () => fetch(`${API_BASE}/sectors`).then(handleResponse);
+export const createSector = (data) => fetch(`${API_BASE}/sectors`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(handleResponse);
+export const deleteSector = (id) => fetch(`${API_BASE}/sectors/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(handleResponse);

@@ -12,32 +12,49 @@ import GISMap from './pages/GISMap';
 import SettingsPage from './pages/SettingsPage';
 import EventReplayModal from './components/EventReplayModal';
 import AddCameraWizard from './components/AddCameraWizard';
-import { getCameras, getSystemMode, getSystemStats, connectWebSocket, getEvents } from './services/api';
+import { getCameras, getSystemMode, getSystemStats, connectWebSocket, getEvents, getSystemStatus, initializeSystem } from './services/api';
+import { ShieldAlert, Sparkles, CheckCircle2 } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('command_center');
   const [cameras, setCameras] = useState([]);
   const [incidents, setIncidents] = useState([]);
   const [systemMode, setSystemMode] = useState('live');
+  const [systemStatus, setSystemStatus] = useState({ initialized: true, emergency_mode: false });
   const [stats, setStats] = useState({ total_cameras: 0, active_cameras: 0, total_incidents: 0, active_incidents: 0, total_tracks: 0, total_anpr: 0 });
   const [wsConnected, setWsConnected] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [showAddWizard, setShowAddWizard] = useState(false);
+  const [initializing, setInitializing] = useState(false);
 
   const loadData = async () => {
     try {
-      const [cams, modeRes, statsRes, eventsRes] = await Promise.all([
+      const [cams, modeRes, statsRes, eventsRes, statusRes] = await Promise.all([
         getCameras(),
         getSystemMode(),
         getSystemStats(),
-        getEvents(0, 30)
+        getEvents(0, 30),
+        getSystemStatus().catch(() => ({ initialized: true, emergency_mode: false }))
       ]);
       setCameras(cams || []);
       setSystemMode(modeRes?.mode || 'live');
       setStats(statsRes || {});
       setIncidents(eventsRes?.items || []);
+      if (statusRes) setSystemStatus(statusRes);
     } catch (err) {
       console.error("Failed to load platform telemetry:", err);
+    }
+  };
+
+  const handleInitialize = async () => {
+    setInitializing(true);
+    try {
+      await initializeSystem();
+      await loadData();
+    } catch (err) {
+      console.error("Initialization failed:", err);
+    } finally {
+      setInitializing(false);
     }
   };
 
@@ -52,6 +69,8 @@ export default function App() {
       else if (msg.type === 'INCIDENT_ALERT' && msg.incident) {
         setIncidents(prev => [msg.incident, ...prev]);
         getSystemStats().then(s => setStats(s || {})); // refresh live stats
+      } else if (msg.type === 'EMERGENCY_MODE_TOGGLED') {
+        loadData();
       }
     });
 
@@ -61,7 +80,13 @@ export default function App() {
   const unreadCount = incidents.filter(i => (i.status === 'NEW' || !i.status) && (i.severity === 'Critical' || i.severity === 'High')).length;
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500 selection:text-black">
+    <div className="relative flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500 selection:text-black">
+      {/* Ambient Blurred Light Orbs Layer for Glass Command */}
+      <div className="ambient-glow-layer pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        <div className="ambient-orb-1" />
+        <div className="ambient-orb-2" />
+        <div className="ambient-orb-3" />
+      </div>
       {/* Left Navigation Sidebar */}
       <Sidebar 
         activeTab={activeTab} 
@@ -82,8 +107,45 @@ export default function App() {
           onAddCamera={() => setShowAddWizard(true)} 
         />
 
+        {/* Emergency Surveillance Mode Banner */}
+        {systemStatus?.emergency_mode && (
+          <div className="bg-red-950/80 border-b border-red-500/50 py-2 px-6 flex items-center justify-between z-20 backdrop-blur-md">
+            <div className="flex items-center gap-3">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+              <span className="font-mono text-xs font-bold tracking-widest text-red-200 uppercase">
+                EMERGENCY SURVEILLANCE MODE ACTIVE // THREAT ESCALATION PROTOCOL ENABLED
+              </span>
+            </div>
+            <span className="text-[10px] font-mono text-red-400">High-Frequency Telemetry Ingestion Active</span>
+          </div>
+        )}
+
         {/* Dynamic Center Stage */}
-        <main className="flex-1 overflow-y-auto bg-slate-950">
+        <main className="flex-1 overflow-y-auto bg-slate-950 relative z-10">
+          {!systemStatus?.initialized ? (
+            <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+              <div className="max-w-md w-full p-8 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl space-y-6">
+                <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-400">
+                  <ShieldAlert className="w-8 h-8" />
+                </div>
+                <div>
+                  <div className="text-xs font-mono font-bold tracking-widest text-emerald-400 uppercase">IBVAP // SIH26187</div>
+                  <h2 className="text-xl font-bold tracking-tight text-white mt-1">System Initialization Required</h2>
+                  <p className="text-sm text-slate-400 mt-2">
+                    Platform is awaiting deployment configuration. No preloaded operational entities exist. Initialize to begin provisioning cameras and sectors.
+                  </p>
+                </div>
+                <button
+                  onClick={handleInitialize}
+                  disabled={initializing}
+                  className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm tracking-wide transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+                >
+                  {initializing ? "Initializing System..." : "Initialize System Deployment"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
           {activeTab === 'command_center' && (
             <CommandCenter 
               stats={stats} 
@@ -140,6 +202,8 @@ export default function App() {
               onRefresh={loadData} 
             />
           )}
+          </>
+        )}
         </main>
       </div>
 
