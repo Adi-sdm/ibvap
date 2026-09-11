@@ -47,7 +47,7 @@
 }
 
 /* Crucial: Video feeds and surveillance frame streams are NEVER blurred */
-video, img, .aspect-video, .stream-viewport {
+video, img, canvas, .aspect-video, .stream-viewport {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   filter: none !important;
@@ -58,8 +58,11 @@ video, img, .aspect-video, .stream-viewport {
   background-color: #f1f5f9 !important;
   color: #0f172a !important;
 }
-[data-theme="light"] main {
-  background-color: #f8fafc !important;
+[data-theme="light"] main,
+[data-theme="light"] header,
+[data-theme="light"] aside {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
 }
 [data-theme="light"] .bg-slate-900 {
   background-color: #ffffff !important;
@@ -69,6 +72,13 @@ video, img, .aspect-video, .stream-viewport {
 [data-theme="light"] .bg-slate-950 {
   background-color: #f8fafc !important;
   border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+[data-theme="light"] input,
+[data-theme="light"] select,
+[data-theme="light"] textarea {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
   color: #0f172a !important;
 }
 [data-theme="light"] .text-slate-100,
@@ -82,6 +92,7 @@ video, img, .aspect-video, .stream-viewport {
 [data-theme="light"] .text-slate-400 {
   color: #64748b !important;
 }
-[data-theme="light"] .border-slate-800 {
+[data-theme="light"] .border-slate-800,
+[data-theme="light"] .border-slate-700 {
   border-color: #cbd5e1 !important;
 }

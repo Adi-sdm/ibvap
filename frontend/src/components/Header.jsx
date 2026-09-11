@@ -1,7 +1,15 @@
-import React from 'react';
-import { Shield, AlertCircle, Radio, Eye, Plus, RefreshCw } from 'lucide-react';
+import React, { useState } from 'react';
+import { Shield, AlertCircle, Radio, Eye, Plus, RefreshCw, Moon, Sparkles, Sun } from 'lucide-react';
 
 export default function Header({ activeTab, stats = {}, systemMode = 'live', onRefresh, onAddCamera }) {
+  const [theme, setTheme] = useState(() => localStorage.getItem('ibvap_theme') || 'dark');
+
+  const switchTheme = (t) => {
+    setTheme(t);
+    localStorage.setItem('ibvap_theme', t);
+    document.documentElement.setAttribute('data-theme', t);
+  };
+
   const activeIncidents = stats.active_incidents || 0;
 
   let threatLevel = 'NORMAL';
@@ -38,7 +46,7 @@ export default function Header({ activeTab, stats = {}, systemMode = 'live', onR
       <div className="flex items-center space-x-3">
         <div>
           <div className="flex items-center space-x-2 text-xs font-mono text-slate-400">
-            <span>SECTOR NORTH // 01-ALPHA</span>
+            <span>IBVAP // OPERATIONAL SECTOR</span>
             <span>/</span>
             <span className="text-slate-300 font-semibold uppercase">{activeTab.replace('_', ' ')}</span>
           </div>
@@ -49,7 +57,32 @@ export default function Header({ activeTab, stats = {}, systemMode = 'live', onR
       </div>
 
       {/* Threat Level & Controls */}
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-3">
+        {/* Quick Theme Switcher */}
+        <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800 space-x-1">
+          <button
+            onClick={() => switchTheme('dark')}
+            title="Tactical Dark Theme"
+            className={`p-1.5 rounded transition ${theme === 'dark' ? 'bg-slate-800 text-cyan-300 border border-slate-700' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            <Moon className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => switchTheme('glass')}
+            title="Glass Command Theme"
+            className={`p-1.5 rounded transition ${theme === 'glass' ? 'bg-slate-800 text-cyan-300 border border-slate-700' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => switchTheme('light')}
+            title="Clean Light Theme"
+            className={`p-1.5 rounded transition ${theme === 'light' ? 'bg-slate-800 text-amber-300 border border-slate-700' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            <Sun className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
         {/* Threat Level Pill */}
         <div className={`flex items-center space-x-2 px-3 py-1.5 rounded border text-xs font-mono font-semibold ${threatColor}`}>
           <span className="relative flex h-2 w-2">

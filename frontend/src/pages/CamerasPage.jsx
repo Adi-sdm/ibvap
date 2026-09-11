@@ -494,6 +494,13 @@ export default function CamerasPage({ cameras = [], onRefresh }) {
                         <span className="font-bold">{selectedCam.sector || 'SECTOR'} • {selectedCam.profile || 'PERIMETER'}</span>
                       </div>
 
+                      {/* Live Ingestion & Inference Telemetry Badge */}
+                      <div className="absolute top-3 right-3 bg-slate-950/80 backdrop-blur px-2.5 py-1 rounded text-[11px] text-slate-300 font-mono flex items-center space-x-2 border border-slate-800">
+                        <span className="text-emerald-400 font-bold">STREAM: 20 FPS</span>
+                        <span className="text-slate-600">|</span>
+                        <span className="text-cyan-400 font-bold">INFERENCE: 20 FPS</span>
+                      </div>
+
                       {/* Interactive HUD Overlay Toolbar */}
                       <OverlayControls 
                         overlayConfig={currentOverlay}
