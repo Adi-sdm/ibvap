@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 import json
 import cv2
+import numpy as np
 import base64
 import uuid
 import time
