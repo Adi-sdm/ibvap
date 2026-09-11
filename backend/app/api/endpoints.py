@@ -579,7 +579,7 @@ def get_system_settings(db: Session = Depends(get_db)):
         anomaly_sensitivity=float(cfg_map.get("anomaly_sensitivity", 0.75)),
         alert_threshold=int(cfg_map.get("alert_threshold", 60)),
         evidence_retention_days=int(cfg_map.get("evidence_retention_days", 30)),
-        gemini_model=cfg_map.get("gemini_model", "gemini-2.0-flash"),
+        gemini_model=cfg_map.get("gemini_model", "gemini-2.5-flash"),
         gemini_low_conf_threshold=float(cfg_map.get("gemini_low_conf_threshold", 0.45)),
         gemini_auto_trigger=cfg_map.get("gemini_auto_trigger", "true").lower() in ["true", "1"],
         cooldown_seconds=int(cfg_map.get("cooldown_seconds", 15)),
@@ -600,6 +600,15 @@ def update_system_settings(update: SystemConfigUpdate, db: Session = Depends(get
                 db.add(cfg)
             else:
                 cfg.value = str(v)
+            if k == "supervisor_passcode":
+                audit = AuditLogDB(
+                    action="UPDATE_SUPERVISOR_PASSCODE",
+                    entity_type="SECURITY",
+                    entity_id="GLOBAL_PASSCODE",
+                    details="Supervisor authorization credential updated via settings console",
+                    timestamp=time.time()
+                )
+                db.add(audit)
     db.commit()
     return get_system_settings(db)
 
@@ -647,7 +656,7 @@ def verify_privileged_action(payload: PrivilegedAuthRequest, db: Session = Depen
 
     # 2. Configurable supervisor authorization credential
     cfg_row = db.query(SystemConfigDB).filter(SystemConfigDB.key == "supervisor_passcode").first()
-    expected_passcode = cfg_row.value.strip() if (cfg_row and cfg_row.value) else "admin123"
+    expected_passcode = cfg_row.value.strip() if (cfg_row and cfg_row.value) else os.getenv("IBVAP_SUPERVISOR_PASSCODE", "admin123")
 
     # 3. Credential verification
     if payload.passcode.strip() != expected_passcode:
@@ -974,16 +983,22 @@ def verify_vehicle_intel(payload: dict, db: Session = Depends(get_db)):
     return vehicle_intel_service.verify_vehicle(db, plate, color, sector)
 
 @router.get("/vehicles/handoff")
-def get_vehicle_handoff(camera_id: str):
+def get_vehicle_handoff(camera_id: str, db: Session = Depends(get_db)):
     from backend.app.services.vehicle_intel import vehicle_intel_service
-    res = vehicle_intel_service.predict_handoff(camera_id)
+    res = vehicle_intel_service.predict_handoff(camera_id, db=db)
     return res or {
         "current_camera": camera_id, 
         "predicted_next_camera": "NONE", 
         "estimated_time_seconds": 0, 
         "correlation_confidence": 0.0,
-        "trajectory_heading": "Stationary"
+        "trajectory_heading": "Stationary",
+        "status": "NO_CALIBRATED_CORRIDORS"
     }
+
+@router.get("/vehicles/corridors")
+def get_vehicle_corridors(db: Session = Depends(get_db)):
+    from backend.app.services.vehicle_intel import vehicle_intel_service
+    return vehicle_intel_service.get_active_corridors(db)
 
 @router.get("/personnel/authorized", response_model=List[AuthorizedPersonOut])
 def get_authorized_personnel(db: Session = Depends(get_db)):
@@ -1083,7 +1098,7 @@ def reset_to_clean(payload: dict, db: Session = Depends(get_db)):
     officer = payload.get("officer_role", "Senior Supervisor")
 
     cfg = db.query(SystemConfigDB).filter(SystemConfigDB.key == "supervisor_passcode").first()
-    expected = cfg.value if cfg else "admin123"
+    expected = cfg.value.strip() if (cfg and cfg.value) else os.getenv("IBVAP_SUPERVISOR_PASSCODE", "admin123")
     if passcode != expected:
         raise HTTPException(status_code=403, detail="Invalid supervisor passcode")
     if len(justification.strip()) < 5:

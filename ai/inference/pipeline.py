@@ -16,7 +16,7 @@ class CameraPipeline(threading.Thread):
                  model=None, yolo_lock=None,
                  event_callback=None, evidence_dir=None,
                  profile: str = "Border Fence Monitoring",
-                 sector: str = "Sector Alpha",
+                 sector: str = "Unassigned",
                  enabled_modules: Optional[Dict[str, bool]] = None,
                  alert_threshold: int = 60,
                  overlay_config: Optional[Dict[str, bool]] = None,
@@ -25,7 +25,7 @@ class CameraPipeline(threading.Thread):
         super().__init__(daemon=True)
         self.camera_id = camera_id
         self.source = source
-        self.is_demo = is_demo or camera_id.startswith("DEMO") or camera_id == "CAM-E2E-TEST"
+        self.is_demo = is_demo or camera_id.startswith("DEMO")
         # Provide an isolated YOLO instance per camera pipeline for independent ByteTrack tracking
         if model is not None and getattr(model, "_ibvap_isolated", False):
             self.model = model

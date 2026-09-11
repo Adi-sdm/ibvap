@@ -55,6 +55,7 @@ export const createAuthorizedVehicle = (data) => fetch(`${API_BASE}/vehicles/aut
 export const deleteAuthorizedVehicle = (plate) => fetch(`${API_BASE}/vehicles/authorized/${encodeURIComponent(plate)}`, { method: 'DELETE' }).then(handleResponse);
 export const verifyVehicleIntel = (plate, detected_color, sector) => fetch(`${API_BASE}/vehicles/verify`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ plate, detected_color, sector }) }).then(handleResponse);
 export const getVehicleHandoff = (cameraId) => fetch(`${API_BASE}/vehicles/handoff?camera_id=${encodeURIComponent(cameraId)}`).then(handleResponse);
+export const getVehicleCorridors = () => fetch(`${API_BASE}/vehicles/corridors`).then(handleResponse);
 
 // Authorized Personnel
 export const getAuthorizedPersonnel = () => fetch(`${API_BASE}/personnel/authorized`).then(handleResponse);

@@ -23,9 +23,11 @@ GEMINI_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models"
 class GeminiVisionProvider(VisionReasoningProvider):
     """Production secondary reasoning provider for Google Gemini."""
 
+    SUPPORTED_MODELS = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+
     def __init__(self):
         self.enabled = True
-        self.default_model = "gemini-2.0-flash"
+        self.default_model = "gemini-2.5-flash"
         self.timeout_seconds = 8.0
         self.max_retries = 1
         self.cooldown_seconds = 15.0
@@ -186,16 +188,33 @@ class GeminiVisionProvider(VisionReasoningProvider):
         b64_image = base64.b64encode(buf).decode("utf-8")
 
         prompt = (
-            "You are a military-grade Border Surveillance AI Advisory Assistant for IBVAP.\n"
-            "Examine this surveillance snapshot and provide a structured operational assessment.\n"
-            f"Context from Local AI: Event: {event_context.get('event_type')}, Severity: {event_context.get('severity')}, "
-            f"Class: {event_context.get('class_name')}, Local Risk: {event_context.get('risk_score')}/100, Behaviour: {event_context.get('behaviour')}.\n\n"
-            "Respond in JSON format with exactly these keys:\n"
+            "You are a defence-grade Border Surveillance AI Advisory Assistant for IBVAP (Intelligent Border Video Analytics Platform).\n"
+            "Examine this surveillance snapshot and provide a structured, disciplined operational assessment.\n"
+            f"Context from Local AI: Camera: {camera_id}, Profile: {event_context.get('profile', 'Border Fence')}, Sector: {event_context.get('sector', 'Unassigned')}, "
+            f"Event: {event_context.get('event_type')}, Severity: {event_context.get('severity')}, "
+            f"Class: {event_context.get('class_name')}, Track ID: #{event_context.get('track_id', 'N/A')}, "
+            f"Local Risk: {event_context.get('risk_score')}/100, Behaviour: {event_context.get('behaviour')}.\n\n"
+            "CRITICAL TRUTHFULNESS REQUIREMENT:\n"
+            "Every assertion MUST carry a confidence qualification using these exact labels:\n"
+            "- OBSERVED: directly visible in pixels\n"
+            "- INFERRED: deduced from context or geometry\n"
+            "- UNCERTAIN: visible but ambiguous or occluded\n"
+            "- NOT VISIBLE: cannot be determined from this angle/resolution\n"
+            "- NOT AVAILABLE: telemetry or sensor data missing\n\n"
+            "Respond strictly in JSON format with exactly these keys:\n"
             "{\n"
-            '  "situational_assessment": "1-2 concise sentences describing what is occurring in the frame",\n'
-            '  "ambiguity_explanation": "Explain any visual ambiguities, lighting challenges, or object occlusions",\n'
+            '  "scene_summary": "1-2 concise sentences summarizing the overall scene",\n'
+            '  "observed_entities": [{"class": "person/vehicle/animal/object", "count": 1, "description": "physical description", "certainty": "OBSERVED" | "INFERRED" | "UNCERTAIN"}],\n'
+            '  "observed_actions": [{"entity": "person", "action": "walking/running/loitering/scaling", "speed_assessment": "Low/Medium/High"}],\n'
+            '  "behavior_assessment": [{"behavior": "name", "threat_relevance": "High/Medium/Low", "rationale": "reasoning"}],\n'
+            '  "local_ai_consistency": {"matches_local_yolo": true, "agreements": ["agreed detections"], "discrepancies": ["any discrepancies"]},\n'
+            '  "uncertainties": [{"aspect": "e.g. object carried", "reason": "lighting/distance", "impact": "High/Medium/Low"}],\n'
+            '  "not_visible_aspects": ["aspects that cannot be determined from camera perspective"],\n'
+            '  "recommended_checks": ["specific verification checks for human operator"],\n'
+            '  "situational_assessment": "1-2 sentences tactical evaluation",\n'
+            '  "ambiguity_explanation": "Explain visual ambiguities, lighting challenges, or object occlusions",\n'
             '  "confidence_assessment": "High" | "Moderate" | "Low",\n'
-            '  "recommended_operator_response": "Clear standard operating procedure recommendation (e.g. dispatch patrol, maintain visual track, disregard wildlife)",\n'
+            '  "recommended_operator_response": "Standard operating procedure recommendation",\n'
             '  "threat_indicators": ["list", "of", "threats", "or", "hazards"]\n'
             "}"
         )
@@ -214,7 +233,7 @@ class GeminiVisionProvider(VisionReasoningProvider):
             }],
             "generationConfig": {
                 "temperature": 0.2,
-                "maxOutputTokens": 450,
+                "maxOutputTokens": 650,
                 "responseMimeType": "application/json"
             }
         }
@@ -237,22 +256,38 @@ class GeminiVisionProvider(VisionReasoningProvider):
                             parsed = json.loads(text_resp)
                         except Exception:
                             parsed = {
+                                "scene_summary": text_resp.strip() or "Scene evaluated.",
                                 "situational_assessment": text_resp.strip() or "Analysis complete.",
                                 "ambiguity_explanation": "Visual assessment derived without schema error.",
                                 "confidence_assessment": "Moderate",
                                 "recommended_operator_response": "Verify sector feed manually.",
-                                "threat_indicators": []
+                                "threat_indicators": [],
+                                "observed_entities": [],
+                                "observed_actions": [],
+                                "behavior_assessment": [],
+                                "local_ai_consistency": {"matches_local_yolo": True, "agreements": ["Detection present"], "discrepancies": []},
+                                "uncertainties": [],
+                                "not_visible_aspects": [],
+                                "recommended_checks": ["Confirm target identity via secondary PTZ"]
                             }
 
                         return VisionAnalysisResult(
                             status="COMPLETED",
                             model=model,
-                            situational_assessment=parsed.get("situational_assessment", "Scene analyzed."),
+                            situational_assessment=parsed.get("situational_assessment") or parsed.get("scene_summary", "Scene analyzed."),
                             ambiguity_explanation=parsed.get("ambiguity_explanation", "No major ambiguities detected."),
                             confidence_assessment=parsed.get("confidence_assessment", "Moderate"),
                             recommended_operator_response=parsed.get("recommended_operator_response", "Continue monitoring."),
                             threat_indicators=parsed.get("threat_indicators", []),
-                            latency_ms=latency
+                            latency_ms=latency,
+                            scene_summary=parsed.get("scene_summary", ""),
+                            observed_entities=parsed.get("observed_entities", []),
+                            observed_actions=parsed.get("observed_actions", []),
+                            behavior_assessment=parsed.get("behavior_assessment", []),
+                            local_ai_consistency=parsed.get("local_ai_consistency", {}),
+                            uncertainties=parsed.get("uncertainties", []),
+                            not_visible_aspects=parsed.get("not_visible_aspects", []),
+                            recommended_checks=parsed.get("recommended_checks", [])
                         )
                     elif res.status_code in [429, 503] and attempt < self.max_retries:
                         await asyncio.sleep(1.5)

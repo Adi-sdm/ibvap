@@ -218,7 +218,7 @@ def start_camera_pipeline(camera_id: str, source: str, cam_record=None):
 
     # Extract configuration attributes
     profile = "Border Fence Monitoring"
-    sector = "Sector Alpha"
+    sector = "Unassigned"
     enabled_modules = None
     alert_threshold = 60
     overlay_config = None
@@ -241,9 +241,9 @@ def start_camera_pipeline(camera_id: str, source: str, cam_record=None):
             except Exception:
                 pass
         gemini_enabled = getattr(cam_record, "gemini_enabled", True)
-        is_demo = bool(getattr(cam_record, "is_demo", False)) or camera_id.startswith("DEMO") or camera_id == "CAM-E2E-TEST"
+        is_demo = bool(getattr(cam_record, "is_demo", False)) or camera_id.startswith("DEMO")
     else:
-        is_demo = camera_id.startswith("DEMO") or camera_id == "CAM-E2E-TEST"
+        is_demo = camera_id.startswith("DEMO")
 
     pipeline = CameraPipeline(
         camera_id=camera_id,

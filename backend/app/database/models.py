@@ -8,12 +8,12 @@ class CameraDB(Base):
     camera_id = Column(String, primary_key=True, index=True)
     name = Column(String, nullable=False)
     rtsp_url = Column(String, nullable=False) # RTSP URL, webcam index ("0"), or MP4 path
-    location = Column(String, default="Perimeter Sector A")
+    location = Column(String, default="Unassigned")
     status = Column(String, default="ONLINE") # ONLINE, OFFLINE, DEGRADED, RECONNECTING
     fps = Column(Float, default=20.0)
     resolution = Column(String, default="800x600")
     profile = Column(String, default="Border Fence Monitoring") # Border Fence, Checkpoint, Vehicle Inspection, Sensitive Sector, Custom
-    sector = Column(String, default="Sector Alpha")
+    sector = Column(String, default="Unassigned")
     auth_username = Column(String, nullable=True)
     auth_password = Column(String, nullable=True)
     enabled_modules = Column(Text, default='{"intrusion": true, "loitering": true, "direction": true, "group": true, "animal_filter": true, "anpr": true, "small_arms": false, "day_night": true}')
@@ -116,7 +116,7 @@ class AuthorizedVehicleDB(Base):
     department = Column(String, default="Border Security Force")
     vehicle_type = Column(String, default="SUV")
     authorized_color = Column(String, default="WHITE")
-    authorized_sectors = Column(String, default="Sector Alpha, Sector Bravo")
+    authorized_sectors = Column(String, default="All Sectors")
     status = Column(String, default="ACTIVE") # ACTIVE, EXPIRED, FLAGGED, WATCHLIST
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -129,7 +129,7 @@ class AuthorizedPersonDB(Base):
     role = Column(String, default="Patrol Guard")
     clearance_level = Column(String, default="RESTRICTED") # TOP_SECRET, RESTRICTED, PUBLIC
     status = Column(String, default="ACTIVE") # ACTIVE, REVOKED, SUSPENDED
-    assigned_sector = Column(String, default="Sector Alpha")
+    assigned_sector = Column(String, default="Unassigned")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 class OperationalSectorDB(Base):

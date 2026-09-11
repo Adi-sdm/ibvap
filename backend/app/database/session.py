@@ -50,7 +50,7 @@ def run_safe_migrations():
             
             cam_columns_to_add = [
                 ("profile", "TEXT DEFAULT 'Border Fence Monitoring'"),
-                ("sector", "TEXT DEFAULT 'Sector Alpha'"),
+                ("sector", "TEXT DEFAULT 'Unassigned'"),
                 ("auth_username", "TEXT"),
                 ("auth_password", "TEXT"),
                 ("enabled_modules", "TEXT DEFAULT '{\"intrusion\": true, \"loitering\": true, \"direction\": true, \"group\": true, \"animal_filter\": true, \"anpr\": true, \"small_arms\": false, \"day_night\": true}'"),

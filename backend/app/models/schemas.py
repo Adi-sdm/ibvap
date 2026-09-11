@@ -9,7 +9,7 @@ class CameraCreate(BaseModel):
     fps: Optional[float] = 0.0
     resolution: Optional[str] = None
     profile: Optional[str] = "Border Fence Monitoring"
-    sector: Optional[str] = "Sector Alpha"
+    sector: Optional[str] = "Unassigned"
     enabled_modules: Optional[Dict[str, bool]] = None
     sensitivity_preset: Optional[str] = "standard"
     alert_threshold: Optional[int] = 60
@@ -31,7 +31,7 @@ class CameraOut(BaseModel):
     resolution: Optional[str] = None
     status: str
     profile: Optional[str] = "Border Fence Monitoring"
-    sector: Optional[str] = "Sector Alpha"
+    sector: Optional[str] = "Unassigned"
     enabled_modules: Optional[Any] = None # Parsed JSON dict or string
     sensitivity_preset: Optional[str] = "standard"
     alert_threshold: Optional[int] = 60
@@ -251,7 +251,7 @@ class SystemConfigOut(BaseModel):
     anomaly_sensitivity: float = 0.75
     alert_threshold: int = 60
     evidence_retention_days: int = 30
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-2.5-flash"
     gemini_low_conf_threshold: float = 0.45
     gemini_auto_trigger: bool = True
     cooldown_seconds: int = 15
@@ -275,6 +275,7 @@ class SystemConfigUpdate(BaseModel):
     operational_area_lng: Optional[float] = None
     operational_area_name: Optional[str] = None
     operational_area_radius: Optional[float] = None
+    supervisor_passcode: Optional[str] = None
 
 class GeminiStatusResponse(BaseModel):
     configured: bool
@@ -286,7 +287,7 @@ class GeminiStatusResponse(BaseModel):
 
 class GeminiConfigUpdate(BaseModel):
     api_key: Optional[str] = None
-    model: Optional[str] = "gemini-2.0-flash"
+    model: Optional[str] = "gemini-2.5-flash"
     enabled: Optional[bool] = True
     rate_limit_rpm: Optional[int] = 10
     low_conf_threshold: Optional[float] = 0.45
@@ -301,7 +302,7 @@ class AuthorizedVehicleCreate(BaseModel):
     department: Optional[str] = "Border Security Force"
     vehicle_type: Optional[str] = "SUV"
     authorized_color: Optional[str] = "WHITE"
-    authorized_sectors: Optional[str] = "Sector Alpha, Sector Bravo"
+    authorized_sectors: Optional[str] = "All Sectors"
     status: Optional[str] = "ACTIVE"
     notes: Optional[str] = None
 
@@ -323,7 +324,7 @@ class AuthorizedPersonCreate(BaseModel):
     role: Optional[str] = "Patrol Guard"
     clearance_level: Optional[str] = "RESTRICTED"
     status: Optional[str] = "ACTIVE"
-    assigned_sector: Optional[str] = "Sector Alpha"
+    assigned_sector: Optional[str] = "Unassigned"
 
 class AuthorizedPersonOut(BaseModel):
     personnel_id: str

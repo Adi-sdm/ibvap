@@ -22,18 +22,36 @@ class VisionAnalysisResult:
     error_message: Optional[str] = None
     disclaimer: str = "Advisory intelligence only. Operational dispatch decisions remain under operator control."
 
+    # Defence Evaluation Structured Categories
+    scene_summary: str = ""
+    observed_entities: List[Dict[str, Any]] = field(default_factory=list)
+    observed_actions: List[Dict[str, Any]] = field(default_factory=list)
+    behavior_assessment: List[Dict[str, Any]] = field(default_factory=list)
+    local_ai_consistency: Dict[str, Any] = field(default_factory=dict)
+    uncertainties: List[Dict[str, Any]] = field(default_factory=list)
+    not_visible_aspects: List[str] = field(default_factory=list)
+    recommended_checks: List[str] = field(default_factory=list)
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "status": self.status,
             "model": self.model,
-            "situational_assessment": self.situational_assessment,
+            "situational_assessment": self.situational_assessment or self.scene_summary,
             "ambiguity_explanation": self.ambiguity_explanation,
             "confidence_assessment": self.confidence_assessment,
             "recommended_operator_response": self.recommended_operator_response,
             "threat_indicators": self.threat_indicators,
             "latency_ms": round(self.latency_ms, 1),
             "error_message": self.error_message,
-            "disclaimer": self.disclaimer
+            "disclaimer": self.disclaimer,
+            "scene_summary": self.scene_summary,
+            "observed_entities": self.observed_entities,
+            "observed_actions": self.observed_actions,
+            "behavior_assessment": self.behavior_assessment,
+            "local_ai_consistency": self.local_ai_consistency,
+            "uncertainties": self.uncertainties,
+            "not_visible_aspects": self.not_visible_aspects,
+            "recommended_checks": self.recommended_checks
         }
 
 class VisionReasoningProvider(ABC):
