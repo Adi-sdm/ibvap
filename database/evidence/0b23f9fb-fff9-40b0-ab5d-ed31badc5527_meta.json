@@ -1,0 +1,58 @@
+{
+  "event_id": "0b23f9fb-fff9-40b0-ab5d-ed31badc5527",
+  "camera_id": "DEMO-011fff2d",
+  "timestamp": 1789239322.1158948,
+  "sha256_hash": "5141033ad6821f6541a7f47c922a0a2aa100dd79d90b6dae484ccab901044cbe",
+  "snapshot_file": "0b23f9fb-fff9-40b0-ab5d-ed31badc5527_snapshot.jpg",
+  "clip_file": "0b23f9fb-fff9-40b0-ab5d-ed31badc5527_clip.mp4",
+  "event_data": {
+    "camera_id": "DEMO-011fff2d",
+    "track_id": 1,
+    "event_type": "INTRUSION_ENTRY",
+    "zone_id": "PERIMETER_DEMO-011",
+    "zone_name": "Sector Demo Perimeter",
+    "zone_type": "RESTRICTED",
+    "class_name": "person",
+    "confidence": 0.7956593036651611,
+    "timestamp": 1789239322.0184035,
+    "bbox": [
+      133.64630126953125,
+      208.83383178710938,
+      173.1114501953125,
+      272.0686340332031
+    ],
+    "loitering_seconds": 0,
+    "risk_score": 75,
+    "severity": "Critical",
+    "explainability": [
+      "\u2713 Target identified as 'person' (+10 pts)",
+      "\u2713 Target entered Restricted Perimeter Zone (+35 pts)",
+      "\u2713 Physical boundary perimeter crossing detected (+30 pts)"
+    ],
+    "ai_summary": "Target activity detected in perimeter sector by person.",
+    "behaviour": "Walking",
+    "detected_objects": [
+      "person"
+    ],
+    "event_id": "0b23f9fb-fff9-40b0-ab5d-ed31badc5527",
+    "is_new": true,
+    "is_escalation": false,
+    "first_seen": 1789239322.0184035,
+    "last_update": 1789239322.0184035,
+    "timeline": [
+      {
+        "state": "DETECTED",
+        "time": 1789239321.5184035,
+        "detail": "Target track #1 acquired"
+      },
+      {
+        "state": "INTRUSION_ENTRY",
+        "time": 1789239322.0184035,
+        "detail": "Triggered INTRUSION_ENTRY in Sector Demo Perimeter"
+      }
+    ],
+    "timeline_json": "[{\"state\": \"DETECTED\", \"time\": 1789239321.5184035, \"detail\": \"Target track #1 acquired\"}, {\"state\": \"INTRUSION_ENTRY\", \"time\": 1789239322.0184035, \"detail\": \"Triggered INTRUSION_ENTRY in Sector Demo Perimeter\"}]",
+    "last_store_time": 1789239322.0184035,
+    "last_evidence_capture": 1789239322.0184035
+  }
+}
