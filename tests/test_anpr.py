@@ -1,9 +1,11 @@
-﻿import pytest
+import pytest
 import sys
+from pathlib import Path
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 import os
 
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, r"C:\Users\Adi\.gemini\antigravity\scratch\ibvap")
 from ai.anpr.anpr_engine import ANPREngine
 
 def test_anpr_format_validation():

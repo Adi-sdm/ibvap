@@ -1,10 +1,12 @@
-﻿import pytest
+import pytest
 import sys
+from pathlib import Path
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 import os
 import time
 
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, r"C:\Users\Adi\.gemini\antigravity\scratch\ibvap")
 from backend.app.services.risk_engine import risk_engine
 from backend.app.services.event_fusion import IncidentFusionManager
 from backend.app.services.evidence_service import evidence_service

@@ -1,10 +1,12 @@
-﻿import pytest
+import pytest
 import sys
+from pathlib import Path
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 import os
 
 # Add scratch root to sys.path
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, r"C:\Users\Adi\.gemini\antigravity\scratch\ibvap")
 from ai.zones.zone_manager import VirtualZone, ZoneTracker
 
 def test_point_in_polygon():

@@ -1,12 +1,10 @@
-import pytest
 import sys
-import asyncio
 from pathlib import Path
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import pytest
 from fastapi.testclient import TestClient
 from backend.app.main import app
 from backend.app.services.small_arms import small_arms_detector
@@ -23,6 +21,8 @@ def test_small_arms_detector_truthful_status():
         # Must not simulate weapon detections
         res = small_arms_detector.detect_weapon(None)
         assert res is None
+
+import asyncio
 
 def test_situation_assessment_generation():
     res = asyncio.run(situation_assessment_service.generate_assessment(operator="OP-TEST"))
@@ -59,9 +59,7 @@ def test_system_readiness_includes_small_arms():
     names = [s["name"] for s in subsystems]
     assert "Small-Arms Neural Detector" in names
 
-if __name__ == "__main__":
-    test_small_arms_detector_truthful_status()
-    test_situation_assessment_generation()
-    test_situation_assessment_api_endpoints()
-    test_system_readiness_includes_small_arms()
-    print("ALL SITUATION ASSESSMENT & SMALL ARMS TESTS PASSED!")
+
+if __name__ == '__main__':
+    import pytest
+    pytest.main([__file__])

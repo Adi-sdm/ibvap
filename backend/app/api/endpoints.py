@@ -13,6 +13,7 @@ import shutil
 from datetime import datetime, timezone
 from sqlalchemy import text
 from pathlib import Path
+import asyncio
 
 from backend.app.database.session import get_db, engine, DB_FILE
 from backend.app.database.models import CameraDB, VirtualZoneDB, EventDB, EvidenceDB, ANPRDB, AuditLogDB, SystemConfigDB, OperationalSectorDB, AuthorizedVehicleDB, AuthorizedPersonDB
@@ -31,6 +32,7 @@ from backend.app.services.profile_service import profile_service
 from backend.app.services.gemini_service import gemini_service
 
 router = APIRouter()
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 # --- CAMERAS ---
 @router.get("/cameras", response_model=List[CameraOut])
@@ -548,9 +550,22 @@ async def consult_camera_gemini(camera_id: str, db: Session = Depends(get_db)):
     telemetry = {}
     
     pipeline = active_pipelines.get(camera_id)
+    if not pipeline and cam.is_active:
+        from backend.app.main import start_camera_pipeline
+        start_camera_pipeline(camera_id, cam.rtsp_url, cam)
+        pipeline = active_pipelines.get(camera_id)
+
     if pipeline:
+        for _ in range(15):
+            try:
+                frame = pipeline.get_latest_frame()
+                if frame is not None and getattr(frame, "size", 0) > 0:
+                    break
+            except Exception:
+                pass
+            await asyncio.sleep(0.1)
+
         try:
-            frame = pipeline.get_latest_frame()
             stats = pipeline.health_status
             telemetry = {
                 "active_tracks": len(getattr(pipeline, "latest_detections", [])),
@@ -560,11 +575,36 @@ async def consult_camera_gemini(camera_id: str, db: Session = Depends(get_db)):
         except Exception:
             pass
 
+    # Direct capture fallback if pipeline buffer is still initializing
+    if frame is None and cam.rtsp_url:
+        try:
+            v_path = cam.rtsp_url
+            if Path(v_path).exists():
+                cap = cv2.VideoCapture(v_path)
+                ret, f = cap.read()
+                if ret and f is not None:
+                    frame = f
+                cap.release()
+            elif str(v_path).isdigit() or str(v_path).lower() in ["0", "webcam"]:
+                cap = cv2.VideoCapture(0)
+                ret, f = cap.read()
+                if ret and f is not None:
+                    frame = f
+                cap.release()
+        except Exception:
+            pass
+
     if frame is None:
-        # Fallback: tactical test frame representing camera sector
-        frame = np.zeros((480, 640, 3), dtype=np.uint8)
-        cv2.putText(frame, f"CAM: {cam.name or camera_id}", (40, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 120), 2)
-        cv2.putText(frame, f"LIVE CONSULTATION REQUEST", (40, 250), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 1)
+        return {
+            "provider": "gemini",
+            "model": gemini_service.get_configured_model(),
+            "status": "FRAME_UNAVAILABLE",
+            "error_message": "No valid live frame currently available from camera capture pipeline.",
+            "success": False,
+            "scene_summary": "Camera feed offline or unavailable.",
+            "camera_id": camera_id,
+            "timestamp": time.time()
+        }
 
     context = {
         "event_id": f"live-consult-{camera_id}-{int(time.time())}",
@@ -581,7 +621,7 @@ async def consult_camera_gemini(camera_id: str, db: Session = Depends(get_db)):
 
     result = await gemini_service.analyze_frame(frame, context)
     res_dict = result.to_dict()
-    res_dict["success"] = result.status == "COMPLETED"
+    res_dict["success"] = result.status in ["COMPLETED", "PARTIAL_RESPONSE"]
     res_dict["gemini_analysis"] = result.to_dict()
     res_dict["camera_id"] = camera_id
     res_dict["timestamp"] = time.time()
@@ -590,6 +630,7 @@ async def consult_camera_gemini(camera_id: str, db: Session = Depends(get_db)):
 @router.post("/events/{event_id}/consult-gemini")
 async def consult_gemini_on_demand(event_id: str, db: Session = Depends(get_db)):
     """Operator on-demand consultation for secondary Gemini reasoning on an incident."""
+    from backend.app.main import active_pipelines
     ev = db.query(EventDB).filter(EventDB.event_id == event_id).first()
     if not ev:
         raise HTTPException(status_code=404, detail="Incident not found")
@@ -597,14 +638,33 @@ async def consult_gemini_on_demand(event_id: str, db: Session = Depends(get_db))
     evidence = db.query(EvidenceDB).filter(EvidenceDB.event_id == event_id).first()
     frame = None
     if evidence and evidence.snapshot_path:
-        snap_file = Path(evidence.snapshot_path)
-        if snap_file.exists():
-            frame = cv2.imread(str(snap_file))
+        fname = Path(evidence.snapshot_path).name
+        candidates = [
+            PROJECT_ROOT / "database" / "evidence" / fname,
+            PROJECT_ROOT / evidence.snapshot_path.lstrip("/\\"),
+            Path(evidence.snapshot_path)
+        ]
+        for c in candidates:
+            if c.exists():
+                frame = cv2.imread(str(c))
+                if frame is not None:
+                    break
+
+    # Fallback to current camera frame if evidence snapshot missing
+    if frame is None and ev.camera_id:
+        pipeline = active_pipelines.get(ev.camera_id)
+        if pipeline:
+            frame = pipeline.get_latest_frame()
 
     if frame is None:
-        # Fallback: create high-contrast dummy frame if snapshot missing
-        frame = np.zeros((480, 640, 3), dtype=np.uint8)
-        cv2.putText(frame, f"INCIDENT {event_id[:8]}", (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        return {
+            "provider": "gemini",
+            "model": gemini_service.get_configured_model(),
+            "status": "FRAME_UNAVAILABLE",
+            "error_message": f"Incident evidence frame not found for event {event_id}.",
+            "success": False,
+            "scene_summary": "Incident snapshot unavailable on storage volume."
+        }
 
     context = {
         "event_id": event_id,
@@ -632,7 +692,7 @@ async def consult_gemini_on_demand(event_id: str, db: Session = Depends(get_db))
     })
 
     res_dict = result.to_dict()
-    res_dict["success"] = result.status == "COMPLETED"
+    res_dict["success"] = result.status in ["COMPLETED", "PARTIAL_RESPONSE"]
     res_dict["gemini_analysis"] = result.to_dict()
     return res_dict
 

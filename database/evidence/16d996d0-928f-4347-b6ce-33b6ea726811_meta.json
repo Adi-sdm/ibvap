@@ -1,0 +1,58 @@
+{
+  "event_id": "16d996d0-928f-4347-b6ce-33b6ea726811",
+  "camera_id": "DEMO-87ca87cf",
+  "timestamp": 1789192491.8741488,
+  "sha256_hash": "c746bb6dcd0f11f17797cb9801a372566fb79758962700bb7ab04e9c587eece2",
+  "snapshot_file": "16d996d0-928f-4347-b6ce-33b6ea726811_snapshot.jpg",
+  "clip_file": "16d996d0-928f-4347-b6ce-33b6ea726811_clip.mp4",
+  "event_data": {
+    "camera_id": "DEMO-87ca87cf",
+    "track_id": 1,
+    "event_type": "INTRUSION_ENTRY",
+    "zone_id": "PERIMETER_DEMO-87c",
+    "zone_name": "Sector Demo Perimeter",
+    "zone_type": "RESTRICTED",
+    "class_name": "person",
+    "confidence": 0.49551424384117126,
+    "timestamp": 1789192491.7699945,
+    "bbox": [
+      65.21890258789062,
+      212.95465087890625,
+      107.16412353515625,
+      284.0086669921875
+    ],
+    "loitering_seconds": 0,
+    "risk_score": 75,
+    "severity": "Critical",
+    "explainability": [
+      "\u2713 Target identified as 'person' (+10 pts)",
+      "\u2713 Target entered Restricted Perimeter Zone (+35 pts)",
+      "\u2713 Physical boundary perimeter crossing detected (+30 pts)"
+    ],
+    "ai_summary": "Target activity detected in perimeter sector by person.",
+    "behaviour": "Walking",
+    "detected_objects": [
+      "person"
+    ],
+    "event_id": "16d996d0-928f-4347-b6ce-33b6ea726811",
+    "is_new": true,
+    "is_escalation": false,
+    "first_seen": 1789192491.7699945,
+    "last_update": 1789192491.7699945,
+    "timeline": [
+      {
+        "state": "DETECTED",
+        "time": 1789192491.2699945,
+        "detail": "Target track #1 acquired"
+      },
+      {
+        "state": "INTRUSION_ENTRY",
+        "time": 1789192491.7699945,
+        "detail": "Triggered INTRUSION_ENTRY in Sector Demo Perimeter"
+      }
+    ],
+    "timeline_json": "[{\"state\": \"DETECTED\", \"time\": 1789192491.2699945, \"detail\": \"Target track #1 acquired\"}, {\"state\": \"INTRUSION_ENTRY\", \"time\": 1789192491.7699945, \"detail\": \"Triggered INTRUSION_ENTRY in Sector Demo Perimeter\"}]",
+    "last_store_time": 1789192491.7699945,
+    "last_evidence_capture": 1789192491.7699945
+  }
+}

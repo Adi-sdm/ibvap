@@ -1,0 +1,48 @@
+{
+  "event_id": "b1377387-6a07-4da3-99ba-b16093300460",
+  "camera_id": "CAM-E2E-TEST",
+  "timestamp": 1789061310.3993418,
+  "sha256_hash": "854f70f5c67c36795ca9dd081fd679b5b054b42ed437627e52c6a6a8ba2559c4",
+  "snapshot_file": "b1377387-6a07-4da3-99ba-b16093300460_snapshot.jpg",
+  "clip_file": "b1377387-6a07-4da3-99ba-b16093300460_clip.mp4",
+  "event_data": {
+    "event_id": "b1377387-6a07-4da3-99ba-b16093300460",
+    "camera_id": "CAM-E2E-TEST",
+    "zone_id": "ZONE-E2E-RESTRICTED",
+    "zone_name": "Restricted Zero Line",
+    "zone_type": "RESTRICTED",
+    "track_id": 1,
+    "class_name": "person",
+    "event_type": "INTRUSION_ENTRY",
+    "timestamp": 1789061310.1477325,
+    "confidence": 0.38820311427116394,
+    "bbox": [
+      481.9332580566406,
+      371.8404541015625,
+      544.610595703125,
+      474.7008361816406
+    ],
+    "norm_position": [
+      0.6415899085998535,
+      0.7911680603027343
+    ],
+    "trajectory_prev": [
+      0.6415899085998535,
+      0.7911680603027343
+    ],
+    "direction": "OUTSIDE_TO_INSIDE",
+    "loitering_seconds": 0.0,
+    "risk_score": 75,
+    "severity": "Critical",
+    "explainability": [
+      "\u2713 Target identified as 'person' (+10 pts)",
+      "\u2713 Target entered Restricted Perimeter Zone (+35 pts)",
+      "\u2713 Physical boundary perimeter crossing detected (+30 pts)"
+    ],
+    "ai_summary": "Target activity detected in perimeter sector by person.",
+    "behaviour": "Walking",
+    "detected_objects": [
+      "person"
+    ]
+  }
+}

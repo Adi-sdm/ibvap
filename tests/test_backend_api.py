@@ -3,8 +3,7 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.app.main import app
 from backend.app.database import init_db
@@ -146,10 +145,6 @@ def test_audit_log_and_gis_spatial_endpoints():
     # Clean up test camera
     client.delete(f"/api/cameras/{cam['camera_id']}")
 
-if __name__ == "__main__":
-    test_system_endpoints()
-    test_camera_crud_and_zones()
-    test_events_pagination()
-    test_demo_mode_toggle()
-    test_audit_log_and_gis_spatial_endpoints()
-    print("ALL BACKEND API TESTS PASSED!")
+if __name__ == '__main__':
+    import pytest
+    pytest.main([__file__])

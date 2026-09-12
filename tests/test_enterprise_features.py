@@ -3,6 +3,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
 import pytest
 import numpy as np
 import cv2
@@ -103,10 +104,7 @@ def test_system_settings_persistence():
     assert updated["alert_threshold"] == 65
     assert updated["loitering_seconds"] == 12.0
 
-if __name__ == "__main__":
-    test_model_registry_truthfulness()
-    test_secrets_vault_security()
-    test_surveillance_profiles_catalog()
-    test_frame_annotator_rendering()
-    test_system_settings_persistence()
-    print("ALL ENTERPRISE FEATURES TESTS PASSED!")
+
+if __name__ == '__main__':
+    import pytest
+    pytest.main([__file__])

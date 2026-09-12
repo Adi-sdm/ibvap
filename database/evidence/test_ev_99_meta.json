@@ -1,0 +1,11 @@
+{
+  "event_id": "test_ev_99",
+  "camera_id": "cam1",
+  "timestamp": 1789196509.7965631,
+  "sha256_hash": "804d5dcd9e5f52eff21899cd4359cb9a2b06fa14df9b8719319f171d23c3c195",
+  "snapshot_file": "test_ev_99_snapshot.jpg",
+  "clip_file": "test_ev_99_clip.mp4",
+  "event_data": {
+    "test": "data"
+  }
+}

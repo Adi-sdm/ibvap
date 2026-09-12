@@ -1,11 +1,10 @@
-import pytest
 import sys
 from pathlib import Path
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import pytest
 from fastapi.testclient import TestClient
 from backend.app.main import app
 
@@ -105,9 +104,7 @@ def test_config_history_endpoint():
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
 
-if __name__ == "__main__":
-    test_system_status_and_readiness()
-    test_system_initialize_and_sectors()
-    test_config_export_and_emergency_mode()
-    test_config_history_endpoint()
-    print("DEPLOYMENT ARCHITECTURE TESTS PASSED!")
+
+if __name__ == '__main__':
+    import pytest
+    pytest.main([__file__])

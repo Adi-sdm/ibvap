@@ -22,6 +22,7 @@ export default function LiveAIAnalysisCard({ cameraId, onClose }) {
   const [geminiConsulting, setGeminiConsulting] = useState(false);
   const [geminiResult, setGeminiResult] = useState(null);
   const [geminiError, setGeminiError] = useState(null);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -45,20 +46,31 @@ export default function LiveAIAnalysisCard({ cameraId, onClose }) {
     };
   }, [cameraId]);
 
+  // Cooldown countdown effect
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setCooldownSeconds(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldownSeconds]);
+
   const handleRequestGemini = async () => {
+    if (geminiConsulting || cooldownSeconds > 0) return;
     setGeminiConsulting(true);
     setGeminiError(null);
     setGeminiResult(null);
     try {
       const res = await consultCameraLive(cameraId);
-      if (res && (res.status === 'ERROR' || res.status === 'OFFLINE' || res.status === 'TIMEOUT')) {
+      if (res && (res.status === 'ERROR' || res.status === 'OFFLINE' || res.status === 'TIMEOUT' || res.status === 'RATE_LIMITED' || res.status === 'FRAME_UNAVAILABLE' || res.status === 'INVALID_CREDENTIALS')) {
         setGeminiError(res.error_message || "Gemini advisory service temporarily unavailable.");
       } else {
         const analysis = res?.gemini_analysis || res;
-        if (analysis && (analysis.situational_assessment || analysis.scene_summary || analysis.status === 'COMPLETED')) {
+        if (analysis && (analysis.situational_assessment || analysis.scene_summary || analysis.status === 'COMPLETED' || analysis.status === 'PARTIAL_RESPONSE')) {
           setGeminiResult(analysis);
+          setCooldownSeconds(10);
         } else {
-          setGeminiError(res?.error_message || "Gemini advisory key not configured or cooldown active.");
+          setGeminiError(res?.error_message || "Gemini advisory returned no response.");
         }
       }
     } catch (err) {
@@ -245,19 +257,21 @@ export default function LiveAIAnalysisCard({ cameraId, onClose }) {
           <button 
             type="button"
             onClick={handleRequestGemini}
-            disabled={geminiConsulting}
-            className="px-2.5 py-1 bg-amber-600/80 hover:bg-amber-500 disabled:opacity-40 text-white font-bold rounded text-[10px] flex items-center gap-1 transition"
+            disabled={geminiConsulting || cooldownSeconds > 0}
+            className="px-2.5 py-1 bg-amber-600/80 hover:bg-amber-500 disabled:opacity-40 text-white font-bold rounded text-[10px] flex items-center gap-1 transition shadow"
           >
-            {geminiConsulting ? 'Consulting...' : 'Request Advisory'}
+            <Sparkles className={`w-3 h-3 ${geminiConsulting ? 'animate-spin text-cyan-300' : ''}`} />
+            {geminiConsulting ? 'Analyzing current camera frame...' : (cooldownSeconds > 0 ? `Cooldown (${cooldownSeconds}s)` : 'Request Advisory')}
           </button>
         </div>
 
         {geminiResult && (
-          <div className="bg-amber-950/40 border border-amber-500/50 p-3 rounded text-[11px] text-amber-200 space-y-2">
-            <div className="font-bold text-amber-300 flex items-center justify-between">
+          <div className="bg-amber-950/40 border border-amber-500/50 p-3 rounded text-[11px] text-amber-200 space-y-2.5">
+            {/* Model & Latency Telemetry Header */}
+            <div className="font-bold text-amber-300 flex items-center justify-between pb-1 border-b border-amber-500/20">
               <span className="flex items-center gap-1">
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                Gemini Advisory Assessment:
+                Gemini Multimodal Advisory:
               </span>
               <div className="flex items-center gap-1.5">
                 <span className="text-[9px] bg-cyan-950 text-cyan-300 px-1.5 py-0.5 rounded border border-cyan-800">
@@ -268,20 +282,114 @@ export default function LiveAIAnalysisCard({ cameraId, onClose }) {
                     {Math.round(geminiResult.latency_ms)}ms
                   </span>
                 )}
+                <span className="text-[9px] bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-800 uppercase">
+                  {geminiResult.status || 'COMPLETED'}
+                </span>
               </div>
             </div>
 
-            <p className="text-slate-200 leading-relaxed text-[11px] bg-slate-950/60 p-2 rounded border border-slate-800">
-              {geminiResult.situational_assessment || geminiResult.scene_summary || (typeof geminiResult === 'string' ? geminiResult : JSON.stringify(geminiResult))}
-            </p>
+            {/* Whole-Scene Visual Summary */}
+            <div>
+              <span className="text-[10px] font-mono text-amber-400 uppercase tracking-wider block mb-0.5">
+                Visual Scene Summary
+              </span>
+              <p className="text-slate-100 leading-relaxed text-[11px] bg-slate-950/80 p-2 rounded border border-slate-800">
+                {geminiResult.scene_summary || geminiResult.situational_assessment || (typeof geminiResult === 'string' ? geminiResult : 'Scene visual inspection completed.')}
+              </p>
+            </div>
 
+            {/* Situational Assessment (if distinct from scene_summary) */}
+            {geminiResult.situational_assessment && geminiResult.situational_assessment !== geminiResult.scene_summary && (
+              <div>
+                <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block mb-0.5">
+                  Tactical Situational Assessment
+                </span>
+                <p className="text-slate-200 leading-relaxed text-[11px] bg-slate-950/50 p-2 rounded border border-slate-800/80">
+                  {geminiResult.situational_assessment}
+                </p>
+              </div>
+            )}
+
+            {/* Environment & Ingestion Quality */}
+            {geminiResult.environment && Object.keys(geminiResult.environment).length > 0 && (
+              <div className="grid grid-cols-2 gap-1.5 bg-slate-950/60 p-2 rounded border border-slate-800/80 text-[10px]">
+                {geminiResult.environment.setting && (
+                  <div>
+                    <span className="text-slate-500">Setting: </span>
+                    <span className="text-slate-300 capitalize">{geminiResult.environment.setting}</span>
+                  </div>
+                )}
+                {geminiResult.environment.lighting && (
+                  <div>
+                    <span className="text-slate-500">Lighting: </span>
+                    <span className="text-slate-300 capitalize">{geminiResult.environment.lighting}</span>
+                  </div>
+                )}
+                {geminiResult.environment.visibility && (
+                  <div>
+                    <span className="text-slate-500">Visibility: </span>
+                    <span className="text-slate-300 capitalize">{geminiResult.environment.visibility}</span>
+                  </div>
+                )}
+                {geminiResult.environment.image_quality && (
+                  <div>
+                    <span className="text-slate-500">Quality: </span>
+                    <span className="text-slate-300 capitalize">{geminiResult.environment.image_quality}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Observed Entities with Certainty Badges */}
+            {Array.isArray(geminiResult.observed_entities) && geminiResult.observed_entities.length > 0 && (
+              <div className="space-y-1">
+                <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
+                  Observed Entities in Frame
+                </span>
+                <div className="space-y-1">
+                  {geminiResult.observed_entities.map((e, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-1.5 rounded bg-slate-900/80 border border-slate-800 text-[10px]">
+                      <span className="text-slate-200">
+                        {e.count > 1 ? `${e.count}x ` : ''}<strong className="capitalize text-amber-300">{e.class}</strong>: {e.description}
+                      </span>
+                      <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold border flex-shrink-0 ml-2 ${
+                        e.certainty === 'OBSERVED' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' :
+                        e.certainty === 'INFERRED' ? 'bg-sky-500/10 text-sky-300 border-sky-500/30' :
+                        'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                      }`}>
+                        {e.certainty || 'OBSERVED'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Local AI Consistency Check */}
+            {geminiResult.local_ai_consistency && (
+              <div className="p-2 rounded bg-slate-950/80 border border-slate-800 flex items-center justify-between text-[10px] font-mono">
+                <span className="text-slate-400">Local YOLOv8 Agreement:</span>
+                <span className={`font-bold px-1.5 py-0.5 rounded border text-[9px] ${
+                  geminiResult.local_ai_consistency.agreement === 'AGREES' || geminiResult.local_ai_consistency.matches_local_yolo
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                    : (geminiResult.local_ai_consistency.agreement === 'PARTIAL AGREEMENT'
+                      ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
+                      : 'bg-amber-500/10 text-amber-300 border-amber-500/30')
+                }`}>
+                  {geminiResult.local_ai_consistency.agreement || (geminiResult.local_ai_consistency.matches_local_yolo ? 'AGREES' : 'INSUFFICIENT VISUAL EVIDENCE')}
+                </span>
+              </div>
+            )}
+
+            {/* Operator SOP Action */}
             {geminiResult.recommended_operator_response && (
-              <div className="text-[10px] bg-amber-500/10 border border-amber-500/30 p-1.5 rounded text-amber-300">
-                <span className="font-bold text-amber-400">Recommended Action: </span>
+              <div className="text-[10px] bg-amber-500/10 border border-amber-500/30 p-2 rounded text-amber-300">
+                <span className="font-bold text-amber-400 block mb-0.5">Recommended Operator Response (SOP):</span>
                 {geminiResult.recommended_operator_response}
               </div>
             )}
 
+            {/* Ambiguity Explanation */}
             {geminiResult.ambiguity_explanation && (
               <div className="text-[9px] text-slate-400 italic">
                 {geminiResult.ambiguity_explanation}
@@ -291,8 +399,8 @@ export default function LiveAIAnalysisCard({ cameraId, onClose }) {
         )}
 
         {geminiError && (
-          <div className="bg-slate-950 border border-slate-800 p-2 rounded text-[10px] text-slate-400 flex items-center gap-2">
-            <Info className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+          <div className="bg-slate-950 border border-rose-900/60 p-2.5 rounded text-[10px] text-rose-300 flex items-center gap-2">
+            <Info className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
             <span>{geminiError}</span>
           </div>
         )}

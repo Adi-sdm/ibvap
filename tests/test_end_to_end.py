@@ -1,4 +1,4 @@
-﻿import sys
+import sys
 import time
 import json
 from pathlib import Path
@@ -15,7 +15,7 @@ def test_end_to_end_intrusion():
     print("--- RUNNING E2E INTRUSION VERIFICATION ---")
     init_db()
 
-    cam_id = "CAM-E2E-TEST"
+    cam_id = "DEMO-E2E-TEST"
     db = SessionLocal()
     try:
         # Clean up any existing test records
@@ -23,6 +23,7 @@ def test_end_to_end_intrusion():
             db.query(EventDB.event_id).filter(EventDB.camera_id == cam_id)
         )).delete(synchronize_session=False)
         db.query(EventDB).filter(EventDB.camera_id == cam_id).delete()
+        db.query(VirtualZoneDB).filter(VirtualZoneDB.zone_id == 'ZONE-E2E-RESTRICTED').delete()
         db.query(VirtualZoneDB).filter(VirtualZoneDB.camera_id == cam_id).delete()
         db.query(CameraDB).filter(CameraDB.camera_id == cam_id).delete()
         db.commit()
@@ -34,7 +35,8 @@ def test_end_to_end_intrusion():
             name="E2E Intrusion Cam",
             rtsp_url=video_path,
             location="Perimeter Sector North",
-            status="ONLINE"
+            status="ONLINE",
+            is_demo=True
         )
         db.add(cam)
 

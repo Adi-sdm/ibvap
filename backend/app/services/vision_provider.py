@@ -32,13 +32,25 @@ class VisionAnalysisResult:
     not_visible_aspects: List[str] = field(default_factory=list)
     recommended_checks: List[str] = field(default_factory=list)
 
+    # Normalized Schema Attributes
+    provider: str = "gemini"
+    confidence: float = 0.85
+    environment: Dict[str, Any] = field(default_factory=dict)
+    potential_anomalies: List[str] = field(default_factory=list)
+    missing_evidence: List[str] = field(default_factory=list)
+    operator_attention: List[str] = field(default_factory=list)
+    raw_text_available: bool = False
+    raw_text: str = ""
+
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "provider": self.provider,
             "status": self.status,
             "model": self.model,
             "situational_assessment": self.situational_assessment or self.scene_summary,
             "ambiguity_explanation": self.ambiguity_explanation,
             "confidence_assessment": self.confidence_assessment,
+            "confidence": self.confidence,
             "recommended_operator_response": self.recommended_operator_response,
             "threat_indicators": self.threat_indicators,
             "latency_ms": round(self.latency_ms, 1),
@@ -51,7 +63,13 @@ class VisionAnalysisResult:
             "local_ai_consistency": self.local_ai_consistency,
             "uncertainties": self.uncertainties,
             "not_visible_aspects": self.not_visible_aspects,
-            "recommended_checks": self.recommended_checks
+            "recommended_checks": self.recommended_checks,
+            "environment": self.environment,
+            "potential_anomalies": self.potential_anomalies,
+            "missing_evidence": self.missing_evidence,
+            "operator_attention": self.operator_attention,
+            "raw_text_available": self.raw_text_available,
+            "raw_text": self.raw_text
         }
 
 class VisionReasoningProvider(ABC):

@@ -1,0 +1,62 @@
+{
+  "event_id": "3ba24978-c93b-48e9-8ef3-b8855b4baec2",
+  "camera_id": "CAM-E2E-TEST",
+  "timestamp": 1789184627.1843324,
+  "sha256_hash": "05bbb10d7219d33b86075e8e08069d97bb970854f4cd98e28fc0d1dec6a63516",
+  "snapshot_file": "3ba24978-c93b-48e9-8ef3-b8855b4baec2_snapshot.jpg",
+  "clip_file": "3ba24978-c93b-48e9-8ef3-b8855b4baec2_clip.mp4",
+  "event_data": {
+    "event_id": "3ba24978-c93b-48e9-8ef3-b8855b4baec2",
+    "camera_id": "CAM-E2E-TEST",
+    "zone_id": "ZONE-E2E-RESTRICTED",
+    "zone_name": "Restricted Zero Line",
+    "zone_type": "RESTRICTED",
+    "track_id": 1,
+    "class_name": "person",
+    "event_type": "INTRUSION_ENTRY",
+    "timestamp": 1789184627.1108165,
+    "confidence": 0.554212212562561,
+    "bbox": [
+      203.95578002929688,
+      243.5177459716797,
+      250.0400390625,
+      317.0006408691406
+    ],
+    "norm_position": [
+      0.28374738693237306,
+      0.5283344014485677
+    ],
+    "trajectory_prev": [
+      0.2754019546508789,
+      0.5190426635742188
+    ],
+    "direction": "OUTSIDE_TO_INSIDE",
+    "loitering_seconds": 0.0,
+    "risk_score": 75,
+    "severity": "Critical",
+    "explainability": [
+      "\u2713 Target identified as 'person' (+10 pts)",
+      "\u2713 Target entered Restricted Perimeter Zone (+35 pts)",
+      "\u2713 Physical boundary perimeter crossing detected (+30 pts)"
+    ],
+    "ai_summary": "Target activity detected in perimeter sector by person.",
+    "behaviour": "Walking",
+    "detected_objects": [
+      "person"
+    ],
+    "timeline": [
+      {
+        "state": "DETECTED",
+        "time": 1789184626.1108165,
+        "detail": "Target track #1 acquired"
+      },
+      {
+        "state": "INTRUSION_ENTRY",
+        "time": 1789184627.1108165,
+        "detail": "Triggered INTRUSION_ENTRY in Restricted Zero Line"
+      }
+    ],
+    "last_update": 1789184627.1108165,
+    "timeline_json": "[{\"state\": \"DETECTED\", \"time\": 1789184626.1108165, \"detail\": \"Target track #1 acquired\"}, {\"state\": \"INTRUSION_ENTRY\", \"time\": 1789184627.1108165, \"detail\": \"Triggered INTRUSION_ENTRY in Restricted Zero Line\"}]"
+  }
+}

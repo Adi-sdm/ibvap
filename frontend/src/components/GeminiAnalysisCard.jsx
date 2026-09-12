@@ -54,9 +54,19 @@ export default function GeminiAnalysisCard({ incident, onUpdated }) {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {geminiStatus === 'COMPLETED' && (
+          {(geminiStatus === 'COMPLETED' || geminiStatus === 'PARTIAL_RESPONSE') && (
             <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
               <CheckCircle2 className="w-3 h-3" /> VERIFIED ADVISORY
+            </span>
+          )}
+          {geminiStatus === 'RATE_LIMITED' && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <AlertTriangle className="w-3 h-3" /> QUOTA LIMIT
+            </span>
+          )}
+          {geminiStatus === 'FRAME_UNAVAILABLE' && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20">
+              NO SNAPSHOT
             </span>
           )}
           {geminiStatus === 'OFFLINE' && (
@@ -139,21 +149,74 @@ export default function GeminiAnalysisCard({ incident, onUpdated }) {
                 <Sparkles className="w-3.5 h-3.5 text-sky-400" />
                 GEMINI ASSISTED ANALYSIS
               </span>
-              <span className="text-[10px] font-mono text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded">
-                {geminiData?.model || 'Multimodal Vision'}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-mono text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded">
+                  {geminiData?.model || 'gemini-3.6-flash'}
+                </span>
+                <button
+                  onClick={handleConsult}
+                  disabled={loading}
+                  title="Re-analyze incident evidence with Gemini"
+                  className="p-1 rounded text-slate-400 hover:text-sky-300 hover:bg-slate-800 transition disabled:opacity-40"
+                >
+                  <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin text-sky-400' : ''}`} />
+                </button>
+              </div>
             </div>
 
-            {geminiData && geminiStatus === 'COMPLETED' ? (
+            {geminiData && (geminiStatus === 'COMPLETED' || geminiStatus === 'PARTIAL_RESPONSE') ? (
               <div className="space-y-3 text-xs">
+                {/* Visual Scene Summary */}
                 <div>
-                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
-                    Situational Assessment
+                  <span className="text-[10px] font-mono text-sky-400 uppercase tracking-wider block mb-0.5">
+                    Visual Scene Summary
                   </span>
-                  <p className="text-slate-200 leading-relaxed font-sans mt-0.5">
-                    {geminiData.situational_assessment || geminiData.scene_summary || 'Snapshot evaluated.'}
+                  <p className="text-slate-100 leading-relaxed font-sans bg-slate-900/60 p-2.5 rounded border border-slate-800">
+                    {geminiData.scene_summary || geminiData.situational_assessment || 'Snapshot visual inspection completed.'}
                   </p>
                 </div>
+
+                {/* Tactical Situational Assessment (if different) */}
+                {geminiData.situational_assessment && geminiData.situational_assessment !== geminiData.scene_summary && (
+                  <div>
+                    <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block mb-0.5">
+                      Tactical Situational Assessment
+                    </span>
+                    <p className="text-slate-200 leading-relaxed font-sans bg-slate-900/40 p-2 rounded border border-slate-800/80">
+                      {geminiData.situational_assessment}
+                    </p>
+                  </div>
+                )}
+
+                {/* Environment Telemetry */}
+                {geminiData.environment && Object.keys(geminiData.environment).length > 0 && (
+                  <div className="grid grid-cols-2 gap-1.5 bg-slate-900/50 p-2 rounded border border-slate-800/70 text-[10px] font-mono">
+                    {geminiData.environment.setting && (
+                      <div>
+                        <span className="text-slate-500">Setting: </span>
+                        <span className="text-slate-300 capitalize">{geminiData.environment.setting}</span>
+                      </div>
+                    )}
+                    {geminiData.environment.lighting && (
+                      <div>
+                        <span className="text-slate-500">Lighting: </span>
+                        <span className="text-slate-300 capitalize">{geminiData.environment.lighting}</span>
+                      </div>
+                    )}
+                    {geminiData.environment.visibility && (
+                      <div>
+                        <span className="text-slate-500">Visibility: </span>
+                        <span className="text-slate-300 capitalize">{geminiData.environment.visibility}</span>
+                      </div>
+                    )}
+                    {geminiData.environment.image_quality && (
+                      <div>
+                        <span className="text-slate-500">Quality: </span>
+                        <span className="text-slate-300 capitalize">{geminiData.environment.image_quality}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Structured Observed Entities with Truthfulness Badges */}
                 {Array.isArray(geminiData.observed_entities) && geminiData.observed_entities.length > 0 && (
@@ -165,9 +228,9 @@ export default function GeminiAnalysisCard({ incident, onUpdated }) {
                       {geminiData.observed_entities.map((e, idx) => (
                         <div key={idx} className="flex items-center justify-between p-1.5 rounded bg-slate-900/70 border border-slate-800 text-[11px] font-mono">
                           <span className="text-slate-200">
-                            {e.count > 1 ? `${e.count}x ` : ''}<strong className="capitalize">{e.class}</strong>: {e.description}
+                            {e.count > 1 ? `${e.count}x ` : ''}<strong className="capitalize text-sky-300">{e.class}</strong>: {e.description}
                           </span>
-                          <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold border ${
+                          <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold border flex-shrink-0 ml-2 ${
                             e.certainty === 'OBSERVED' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' :
                             e.certainty === 'INFERRED' ? 'bg-sky-500/10 text-sky-300 border-sky-500/30' :
                             'bg-amber-500/10 text-amber-300 border-amber-500/30'
@@ -184,8 +247,14 @@ export default function GeminiAnalysisCard({ incident, onUpdated }) {
                 {geminiData.local_ai_consistency && (
                   <div className="p-2 rounded bg-slate-900/60 border border-slate-800 flex items-center justify-between text-[11px] font-mono">
                     <span className="text-slate-400">Local YOLOv8 Agreement:</span>
-                    <span className={geminiData.local_ai_consistency.matches_local_yolo ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
-                      {geminiData.local_ai_consistency.matches_local_yolo ? '✓ CONSISTENT' : '⚠ DISCREPANCY'}
+                    <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
+                      geminiData.local_ai_consistency.agreement === 'AGREES' || geminiData.local_ai_consistency.matches_local_yolo
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                        : (geminiData.local_ai_consistency.agreement === 'PARTIAL AGREEMENT'
+                          ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
+                          : 'bg-amber-500/10 text-amber-300 border-amber-500/30')
+                    }`}>
+                      {geminiData.local_ai_consistency.agreement || (geminiData.local_ai_consistency.matches_local_yolo ? 'AGREES' : 'INSUFFICIENT VISUAL EVIDENCE')}
                     </span>
                   </div>
                 )}

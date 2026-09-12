@@ -1,9 +1,9 @@
-﻿import cv2
+import cv2
 import numpy as np
 import os
 import math
 
-out_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "videos"))
+out_dir = r"C:\Users\Adi\.gemini\antigravity\scratch\ibvap\demo\videos"
 os.makedirs(out_dir, exist_ok=True)
 
 def draw_person(frame, x, y, scale=1.0, color=(50, 80, 200), label=None):
