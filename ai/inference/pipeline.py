@@ -75,6 +75,7 @@ class CameraPipeline(threading.Thread):
             "group": True,
             "animal_filter": True,
             "anpr": True,
+            "frs": True,
             "small_arms": False,
             "day_night": True
         }
@@ -326,17 +327,27 @@ class CameraPipeline(threading.Thread):
             ret, frame = cap.read()
             
             if not ret:
-                consecutive_failures += 1
-                if consecutive_failures >= 10:
+                # If reading from a video file, seamlessly loop back to frame 0
+                if isinstance(self.source, str) and (self.source.endswith(('.mp4', '.avi', '.mkv', '.mov')) or Path(self.source).is_file()):
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ret, frame = cap.read()
+                    if ret:
+                        consecutive_failures = 0
+                    else:
+                        consecutive_failures += 1
+                else:
+                    consecutive_failures += 1
+
+                if not ret and consecutive_failures >= 10:
                     print(f"[{self.camera_id}] Multiple frame capture failures ({consecutive_failures}). Re-opening camera feed...")
                     if cap:
                         cap.release()
                     time.sleep(1.0)
                     cap = self._open_capture()
                     consecutive_failures = 0
-                else:
+                elif not ret:
                     time.sleep(0.04)
-                continue
+                    continue
 
             consecutive_failures = 0
 
@@ -452,12 +463,22 @@ class CameraPipeline(threading.Thread):
                                 carried_bag = bname
                                 break
                         
-                        # Modular small-arms detection: only run if module enabled and weights loaded on disk
-                        if not carried_bag and self.enabled_modules.get("small_arms", False) and getattr(self.small_arms_detector, "available", False):
-                            crop = frame[max(0, int(y1)):min(h_frame, int(y2)), max(0, int(x1)):min(w_frame, int(x2))]
-                            w_res = self.small_arms_detector.detect_weapon(crop)
-                            if w_res and w_res.get("detected"):
-                                carried_bag = w_res.get("label", "Potential weapon-like object")
+                        # Modular Face Recognition System (FRS): track-associated caching ensures 0 FPS collapse
+                        frs_data = None
+                        if self.enabled_modules.get("frs", True):
+                            try:
+                                from backend.app.services.frs_service import frs_subsystem
+                                frs_data = frs_subsystem.evaluate_tracked_person(
+                                    camera_id=self.camera_id,
+                                    track_id=track_id,
+                                    person_bbox=[int(x1), int(y1), int(x2), int(y2)],
+                                    frame=frame,
+                                    data_mode=("DEMO" if self.is_demo else "LIVE")
+                                )
+                            except Exception:
+                                pass
+                    else:
+                        frs_data = None
 
                     foot_x = ((x1 + x2) / 2) / w_frame
                     foot_y = y2 / h_frame
@@ -606,6 +627,37 @@ class CameraPipeline(threading.Thread):
                             self.anpr_last_run[track_id] = now
                             self._run_anpr(frame, x1, y1, x2, y2, track_id, cls_name)
                             
+                    # Watchlist Biometric Alert Dispatch
+                    if frs_data and frs_data.get("is_watchlist"):
+                        wl_name = frs_data.get("name", "Watchlist POI")
+                        wl_conf = frs_data.get("confidence", conf)
+                        wl_event = {
+                            "camera_id": self.camera_id,
+                            "track_id": track_id,
+                            "event_type": "WATCHLIST_TARGET_IDENTIFIED",
+                            "zone_id": f"WATCHLIST_{self.camera_id}",
+                            "zone_name": f"{self.sector} Watchlist Alert",
+                            "zone_type": "RESTRICTED",
+                            "class_name": "person",
+                            "confidence": float(wl_conf),
+                            "timestamp": time.time(),
+                            "risk_score": 98,
+                            "severity": "Critical",
+                            "explainability": [
+                                f"Biometric Match: {wl_name}",
+                                f"Match Confidence: {int(wl_conf * 100)}%",
+                                "High-Risk Watchlist Infiltration Protocol"
+                            ],
+                            "ai_summary": f"CRITICAL WATCHLIST IDENTIFIED: Flagged individual {wl_name} ({int(wl_conf * 100)}% match) confirmed on {self.camera_id}.",
+                            "behaviour": "Watchlist Infiltration",
+                            "detected_objects": ["person", "watchlist_target"]
+                        }
+                        fused_wl = self.fusion_manager.process_event(wl_event)
+                        now_t = time.time()
+                        if fused_wl and (fused_wl.get("is_new", False) or (now_t - fused_wl.get("last_store_time", 0) > 20.0)):
+                            fused_wl["last_store_time"] = now_t
+                            self._store_event(fused_wl, "person", float(wl_conf), frame, is_new=True, is_escalation=True)
+
                     current_detections.append({
                         "bbox": [x1, y1, x2, y2],
                         "class_name": cls_name,
@@ -615,7 +667,8 @@ class CameraPipeline(threading.Thread):
                         "in_restricted": in_restricted_zone,
                         "framing": framing,
                         "posture": posture,
-                        "carried_bag": carried_bag
+                        "carried_bag": carried_bag,
+                        "frs": frs_data
                     })
 
             self.latest_detections = current_detections

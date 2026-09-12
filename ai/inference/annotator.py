@@ -132,8 +132,15 @@ class FrameAnnotator:
                 tid = b.get("track_id")
                 beh = b.get("behaviour", "")
 
+                frs = b.get("frs")
                 # Assign color
-                if cls_name == "person":
+                if frs and frs.get("is_watchlist"):
+                    color = (30, 30, 240) # Red Watchlist
+                elif frs and frs.get("status") == "MATCH":
+                    color = (50, 205, 50) # Lime Green Verified Match
+                elif frs and frs.get("status") == "UNCERTAIN":
+                    color = (30, 140, 240) # Amber Uncertain
+                elif cls_name == "person":
                     color = COLOR_PERSON if (beh in ["Running", "Direction Reversal"] or b.get("in_restricted")) else COLOR_WARNING
                 elif cls_name in ["car", "truck", "bus", "motorcycle"]:
                     color = COLOR_VEHICLE
@@ -163,12 +170,21 @@ class FrameAnnotator:
 
                 # Construct Badge text
                 parts = []
-                if config.get("tracks", True) and tid is not None:
-                    parts.append(f"#{tid}")
-                if config.get("labels", True):
-                    parts.append(cls_name.upper())
-                if config.get("confidence", True):
-                    parts.append(f"{int(conf * 100)}%")
+                if frs and frs.get("is_watchlist"):
+                    parts.append(f"[WATCHLIST ALERT] {frs.get('name', 'POI').upper()}")
+                elif frs and frs.get("status") == "MATCH":
+                    match_conf = int(frs.get("confidence", 0.0) * 100)
+                    parts.append(f"[MATCH] {frs.get('name', 'VERIFIED')} ({match_conf}%)")
+                elif frs and frs.get("status") == "UNCERTAIN":
+                    parts.append("[RECOGNITION UNCERTAIN]")
+                else:
+                    if config.get("tracks", True) and tid is not None:
+                        parts.append(f"#{tid}")
+                    if config.get("labels", True):
+                        parts.append(cls_name.upper())
+                    if config.get("confidence", True):
+                        parts.append(f"{int(conf * 100)}%")
+
                 if beh and beh not in ["Normal", "Walking"]:
                     parts.append(f"[{beh.upper()}]")
 

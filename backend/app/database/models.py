@@ -157,7 +157,7 @@ class SituationAssessmentDB(Base):
     included_cameras = Column(Text, default="[]") # JSON list of camera IDs
     included_incidents = Column(Text, default="[]") # JSON list of incident IDs
     evidence_count = Column(Integer, default=0)
-    model = Column(String, default="gemini-2.5-flash")
+    model = Column(String, default="gemini-3.6-flash")
     status = Column(String, default="COMPLETED") # COMPLETED, FAILED, RUNNING
     result = Column(Text, nullable=True) # JSON structured assessment
     confidence = Column(Float, default=0.85)
@@ -175,4 +175,44 @@ class ValidationRunDB(Base):
     metrics = Column(Text, nullable=False) # JSON string: precision, recall, f1, fp, fn, fps, latency
     data_mode = Column(String, default="VALIDATION")
     timestamp = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class FaceGalleryDB(Base):
+    __tablename__ = "face_gallery"
+
+    person_id = Column(String, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    rank = Column(String, default="Staff")
+    designation = Column(String, default="Personnel")
+    organization = Column(String, default="Border Security Force")
+    category = Column(String, default="OPERATIONAL") # OPERATIONAL, VISITOR, WATCHLIST, VIP, SECURITY, CONTRACTOR
+    status = Column(String, default="ACTIVE") # ACTIVE, DISABLED, WATCHLIST
+    photo_path = Column(String, nullable=True) # Relative path to primary photo in evidence vault
+    photos_json = Column(Text, default="[]") # JSON list of relative photo paths
+    embeddings_enc = Column(Text, nullable=False) # Fernet-encrypted JSON of 128-D embedding vectors
+    quality_score = Column(Float, default=0.0) # Quality rating 0-100
+    notes = Column(Text, nullable=True)
+    is_demo = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+class FaceRecognitionDB(Base):
+    __tablename__ = "face_recognitions"
+
+    recognition_id = Column(String, primary_key=True, index=True)
+    camera_id = Column(String, ForeignKey("cameras.camera_id"), nullable=False, index=True)
+    track_id = Column(Integer, nullable=True)
+    person_id = Column(String, nullable=True, index=True) # None if UNKNOWN
+    person_name = Column(String, default="Unknown Person")
+    person_rank = Column(String, nullable=True)
+    category = Column(String, default="UNKNOWN")
+    confidence = Column(Float, default=0.0)
+    status = Column(String, default="UNKNOWN") # MATCH, UNKNOWN, UNCERTAIN
+    snapshot_path = Column(String, nullable=True)
+    bbox_json = Column(Text, default="[0,0,0,0]") # [x1, y1, x2, y2]
+    sha256_hash = Column(String, nullable=True)
+    event_id = Column(String, nullable=True) # Linked incident if created
+    timestamp = Column(Float, nullable=False, index=True)
+    is_demo = Column(Boolean, default=False)
+    data_mode = Column(String, default="LIVE") # LIVE, DEMO, VALIDATION
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

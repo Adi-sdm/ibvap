@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
         from backend.app.database.models import CameraDB
         db = SessionLocal()
         try:
-            cameras = db.query(CameraDB).filter(CameraDB.is_demo == False, CameraDB.is_active == True).all()
+            cameras = db.query(CameraDB).filter(CameraDB.is_active == True).all()
             for cam in cameras:
                 start_camera_pipeline(cam.camera_id, cam.rtsp_url, cam)
             print(f"[SYSTEM] Auto-started {len(cameras)} registered camera pipelines.")
@@ -286,6 +286,17 @@ def generate_mjpeg(camera_id: str, annotated: bool = True):
 
 @app.get("/api/cameras/{camera_id}/stream")
 def stream_camera_feed(camera_id: str, annotated: bool = True):
+    if camera_id not in active_pipelines:
+        from backend.app.database.session import SessionLocal
+        from backend.app.database.models import CameraDB
+        db = SessionLocal()
+        try:
+            cam = db.query(CameraDB).filter(CameraDB.camera_id == camera_id, CameraDB.is_active == True).first()
+            if cam:
+                start_camera_pipeline(camera_id, cam.rtsp_url, cam)
+        finally:
+            db.close()
+
     if camera_id not in active_pipelines:
         raise HTTPException(status_code=404, detail="Camera stream not found or inactive")
     return StreamingResponse(

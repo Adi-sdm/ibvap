@@ -49,6 +49,30 @@ class SecretsVault:
             # Fallback: in case plaintext was stored before encryption migration
             return ciphertext
 
+    def encrypt_str(self, plaintext: str) -> str:
+        """Encrypt string data using machine-bound Fernet key."""
+        return self._encrypt(plaintext)
+
+    def decrypt_str(self, ciphertext: str) -> Optional[str]:
+        """Decrypt ciphertext using machine-bound Fernet key."""
+        return self._decrypt(ciphertext)
+
+    def encrypt_bytes(self, raw_bytes: bytes) -> bytes:
+        """Encrypt raw binary data (e.g. biometric images)."""
+        if not raw_bytes:
+            return b""
+        return self._fernet.encrypt(raw_bytes)
+
+    def decrypt_bytes(self, enc_bytes: bytes) -> bytes:
+        """Decrypt raw binary data (e.g. biometric images)."""
+        if not enc_bytes:
+            return b""
+        try:
+            return self._fernet.decrypt(enc_bytes)
+        except Exception:
+            # Fallback if image was not yet encrypted
+            return enc_bytes
+
     def _ensure_file(self):
         if not self.secrets_path.parent.exists():
             self.secrets_path.parent.mkdir(parents=True, exist_ok=True)

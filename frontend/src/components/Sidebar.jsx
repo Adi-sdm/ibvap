@@ -38,6 +38,7 @@ export default function Sidebar({ activeTab, onTabChange, wsConnected, systemMod
     { id: 'command_center', path: '/command-center', label: 'Command Center', icon: LayoutDashboard, badge: null },
     { id: 'cameras', path: '/cameras', label: 'Cameras', icon: Camera, badge: null },
     { id: 'incidents', path: '/incidents', label: 'Incidents', icon: ShieldAlert, badge: unreadCount > 0 ? unreadCount : null },
+    { id: 'face_recognition', path: '/face-recognition', label: 'Face Recognition Center', icon: UserCheck, badge: null },
     { id: 'evidence_vault', path: '/evidence', label: 'Evidence Vault', icon: Database, badge: null },
     { id: 'ai_analysis', path: '/ai-analysis', label: 'AI Analysis', icon: Cpu, badge: null },
     { id: 'vehicle_intel', path: '/vehicles', label: 'Vehicle Intel & ANPR', icon: Car, badge: null },

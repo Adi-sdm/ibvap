@@ -11,6 +11,7 @@ import Analytics from './pages/Analytics';
 import VehicleIntel from './pages/VehicleIntel';
 import GISMap from './pages/GISMap';
 import SettingsPage from './pages/SettingsPage';
+import FaceRecognitionCenter from './pages/FaceRecognitionCenter';
 import EventReplayModal from './components/EventReplayModal';
 import AddCameraWizard from './components/AddCameraWizard';
 import { getCameras, getSystemMode, getSystemStats, connectWebSocket, getEvents, getSystemStatus, initializeSystem } from './services/api';
@@ -33,6 +34,7 @@ export default function App() {
   const getActiveTab = (pathname) => {
     if (pathname.startsWith('/cameras')) return 'cameras';
     if (pathname.startsWith('/incidents')) return 'incidents';
+    if (pathname.startsWith('/face-recognition')) return 'face_recognition';
     if (pathname.startsWith('/evidence')) return 'evidence_vault';
     if (pathname.startsWith('/ai-analysis')) return 'ai_analysis';
     if (pathname.startsWith('/vehicles')) return 'vehicle_intel';
@@ -217,6 +219,7 @@ export default function App() {
                   onSelectIncident={setSelectedIncident} 
                 />
               } />
+              <Route path="/face-recognition" element={<FaceRecognitionCenter systemMode={systemMode} />} />
               <Route path="/ai-analysis" element={<AIAnalysis />} />
               <Route path="/vehicles" element={<VehicleIntel />} />
               <Route path="/gis" element={

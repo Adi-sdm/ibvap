@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
@@ -16,7 +16,11 @@ from pathlib import Path
 import asyncio
 
 from backend.app.database.session import get_db, engine, DB_FILE
-from backend.app.database.models import CameraDB, VirtualZoneDB, EventDB, EvidenceDB, ANPRDB, AuditLogDB, SystemConfigDB, OperationalSectorDB, AuthorizedVehicleDB, AuthorizedPersonDB
+from backend.app.database.models import (
+    CameraDB, VirtualZoneDB, EventDB, EvidenceDB, ANPRDB, AuditLogDB,
+    SystemConfigDB, OperationalSectorDB, AuthorizedVehicleDB, AuthorizedPersonDB,
+    FaceGalleryDB, FaceRecognitionDB
+)
 from backend.app.models.schemas import (
     CameraCreate, CameraOut, CameraConfigUpdate, VirtualZoneCreate, VirtualZoneOut, 
     EventOut, EventStatusUpdate, EventFeedbackUpdate, ANPROut,
@@ -1798,3 +1802,475 @@ def get_latest_validation_report():
     """Retrieves the latest verified AI evaluation report."""
     from backend.app.services.validation_runner import validation_runner
     return validation_runner.get_latest_report()
+
+# =====================================================================
+# FACE RECOGNITION SYSTEM (FRS) ENDPOINTS
+# =====================================================================
+
+class FRSPersonUpdate(BaseModel):
+    name: Optional[str] = None
+    rank: Optional[str] = None
+    designation: Optional[str] = None
+    organization: Optional[str] = None
+    category: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+class FRSPersonOut(BaseModel):
+    person_id: str
+    name: str
+    rank: str
+    designation: str
+    organization: str
+    category: str
+    status: str
+    photo_path: Optional[str] = None
+    photos: List[str] = []
+    quality_score: float = 0.0
+    notes: Optional[str] = None
+    is_demo: bool = False
+    created_at: Optional[str] = None
+
+@router.get("/frs/status")
+def get_frs_status():
+    """Returns real-time diagnostic status of YuNet detector, SFace recognizer, gallery, and latency."""
+    from backend.app.services.frs_service import frs_subsystem
+    return frs_subsystem.get_status()
+
+@router.get("/frs/gallery", response_model=List[FRSPersonOut])
+def get_frs_gallery(
+    category: Optional[str] = None,
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    data_mode: str = "LIVE",
+    db: Session = Depends(get_db)
+):
+    """List enrolled personnel in face gallery with search and category filtering."""
+    query = db.query(FaceGalleryDB)
+    if data_mode == "LIVE":
+        query = query.filter(FaceGalleryDB.is_demo == False)
+    elif data_mode == "DEMO":
+        query = query.filter(FaceGalleryDB.is_demo == True)
+
+    if category and category.upper() != "ALL":
+        query = query.filter(FaceGalleryDB.category == category.upper())
+    if status and status.upper() != "ALL":
+        query = query.filter(FaceGalleryDB.status == status.upper())
+    if search:
+        s = f"%{search.strip()}%"
+        query = query.filter(
+            (FaceGalleryDB.name.ilike(s)) |
+            (FaceGalleryDB.person_id.ilike(s)) |
+            (FaceGalleryDB.designation.ilike(s)) |
+            (FaceGalleryDB.organization.ilike(s))
+        )
+
+    records = query.order_by(FaceGalleryDB.created_at.desc()).all()
+    results = []
+    for r in records:
+        photos = []
+        try:
+            photos = json.loads(r.photos_json or "[]")
+        except Exception:
+            pass
+        results.append(FRSPersonOut(
+            person_id=r.person_id,
+            name=r.name,
+            rank=r.rank or "Staff",
+            designation=r.designation or "Personnel",
+            organization=r.organization or "Border Security Force",
+            category=r.category or "OPERATIONAL",
+            status=r.status or "ACTIVE",
+            photo_path=r.photo_path,
+            photos=photos,
+            quality_score=r.quality_score or 0.0,
+            notes=r.notes,
+            is_demo=bool(r.is_demo),
+            created_at=r.created_at.isoformat() if r.created_at else None
+        ))
+    return results
+
+@router.post("/frs/enroll")
+async def enroll_frs_person(
+    name: str = Form(...),
+    rank: str = Form("Staff"),
+    designation: str = Form("Personnel"),
+    organization: str = Form("Border Security Force"),
+    category: str = Form("OPERATIONAL"),
+    status: str = Form("ACTIVE"),
+    notes: str = Form(""),
+    operator: str = Form("Administrator"),
+    is_demo: bool = Form(False),
+    images: List[UploadFile] = File(...)
+):
+    """Enroll a new person with multi-angle images, quality check, encrypted vectors, and audit log."""
+    from backend.app.services.frs_service import frs_subsystem
+    if not images or len(images) < 1:
+        raise HTTPException(status_code=400, detail="At least 1 valid face photo is required.")
+
+    image_tuples = []
+    for img_file in images:
+        content = await img_file.read()
+        image_tuples.append((img_file.filename, content))
+
+    res = frs_subsystem.enroll_person(
+        name=name,
+        rank=rank,
+        designation=designation,
+        organization=organization,
+        category=category,
+        status=status,
+        notes=notes,
+        image_files=image_tuples,
+        operator=operator,
+        is_demo=is_demo
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Enrollment failed."))
+    return res
+
+@router.post("/frs/validate-photo")
+async def validate_photo(photo: UploadFile = File(...)):
+    """Pre-validates an uploaded image for face detection, sharpness, contrast, and quality."""
+    from backend.app.services.frs_service import frs_subsystem
+    content = await photo.read()
+    nparr = np.frombuffer(content, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        raise HTTPException(status_code=400, detail="Failed to decode image.")
+
+    extracted = frs_subsystem.detect_and_extract_faces(img, require_quality=False)
+    if not extracted:
+        return {
+            "passed": False,
+            "score": 0.0,
+            "sharpness": 0.0,
+            "brightness": 0.0,
+            "resolution": f"{img.shape[1]}x{img.shape[0]}",
+            "faces_detected": 0,
+            "reasons": ["No human face detected in image. Please provide a clear frontal shot."]
+        }
+
+    best = max(extracted, key=lambda f: f["quality"]["score"])
+    q = best["quality"]
+    q["faces_detected"] = len(extracted)
+    q["det_confidence"] = best["det_confidence"]
+    return q
+
+@router.get("/frs/gallery/{person_id}")
+def get_person_details(person_id: str, operator: Optional[str] = "Operator", db: Session = Depends(get_db)):
+    """Retrieves full personnel dossier with audit trail."""
+    from backend.app.services.audit_log import log_action
+    p = db.query(FaceGalleryDB).filter(FaceGalleryDB.person_id == person_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Personnel not found.")
+
+    photos = []
+    try:
+        photos = json.loads(p.photos_json or "[]")
+    except Exception:
+        pass
+
+    # Log dossier access for audit compliance
+    log_action("FRS_DOSSIER_ACCESSED", "FACE_GALLERY", person_id, {"operator": operator, "name": p.name})
+
+    return {
+        "person_id": p.person_id,
+        "name": p.name,
+        "rank": p.rank,
+        "designation": p.designation,
+        "organization": p.organization,
+        "category": p.category,
+        "status": p.status,
+        "photo_path": p.photo_path,
+        "photos": photos,
+        "quality_score": p.quality_score,
+        "notes": p.notes,
+        "is_demo": bool(p.is_demo),
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+        "updated_at": p.updated_at.isoformat() if p.updated_at else None
+    }
+
+@router.put("/frs/gallery/{person_id}")
+def update_person_profile(
+    person_id: str,
+    update: FRSPersonUpdate,
+    operator: str = Query("Administrator"),
+    db: Session = Depends(get_db)
+):
+    """Updates personnel metadata and logs audit record."""
+    from backend.app.services.frs_service import frs_subsystem
+    res = frs_subsystem.update_person(
+        person_id=person_id,
+        update_data=update.model_dump(exclude_unset=True),
+        operator=operator
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Update failed."))
+    return res
+
+@router.delete("/frs/gallery/{person_id}")
+def delete_person_profile(
+    person_id: str,
+    operator: str = Query("Administrator")
+):
+    """Deletes personnel profile, biometric vectors, and reference images with audit logging."""
+    from backend.app.services.frs_service import frs_subsystem
+    res = frs_subsystem.delete_person(person_id=person_id, operator=operator)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Deletion failed."))
+    return res
+
+@router.get("/frs/gallery/{person_id}/export")
+def export_person_record(
+    person_id: str,
+    operator: str = Query("Supervisor"),
+    db: Session = Depends(get_db)
+):
+    """Exports structured personnel biometric and audit dossier with audit entry."""
+    from backend.app.services.audit_log import log_action
+    p = db.query(FaceGalleryDB).filter(FaceGalleryDB.person_id == person_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Personnel not found.")
+
+    # Fetch recognition history
+    recs = db.query(FaceRecognitionDB).filter(FaceRecognitionDB.person_id == person_id).order_by(FaceRecognitionDB.timestamp.desc()).limit(100).all()
+
+    sighting_list = [{
+        "recognition_id": r.recognition_id,
+        "camera_id": r.camera_id,
+        "confidence": r.confidence,
+        "status": r.status,
+        "timestamp": r.timestamp,
+        "sha256_hash": r.sha256_hash,
+        "snapshot_path": r.snapshot_path
+    } for r in recs]
+
+    log_action("FRS_PERSON_EXPORTED", "FACE_GALLERY", person_id, {"operator": operator, "sightings_count": len(sighting_list)})
+
+    return {
+        "export_id": f"EXP-{uuid.uuid4().hex[:8].upper()}",
+        "export_timestamp": time.time(),
+        "exported_by": operator,
+        "classification": "CONFIDENTIAL // LAW ENFORCEMENT SENSITIVE",
+        "profile": {
+            "person_id": p.person_id,
+            "name": p.name,
+            "rank": p.rank,
+            "designation": p.designation,
+            "organization": p.organization,
+            "category": p.category,
+            "status": p.status,
+            "quality_score": p.quality_score,
+            "created_at": p.created_at.isoformat() if p.created_at else None
+        },
+        "sightings_history": sighting_list
+    }
+
+@router.get("/frs/recognitions")
+def get_recognition_history(
+    camera_id: Optional[str] = None,
+    status: Optional[str] = None,
+    category: Optional[str] = None,
+    person_id: Optional[str] = None,
+    data_mode: str = "LIVE",
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db)
+):
+    """Fetch recognition history with filtering and pagination."""
+    query = db.query(FaceRecognitionDB)
+    if data_mode == "LIVE":
+        query = query.filter(FaceRecognitionDB.is_demo == False)
+    elif data_mode == "DEMO":
+        query = query.filter(FaceRecognitionDB.is_demo == True)
+
+    if camera_id:
+        query = query.filter(FaceRecognitionDB.camera_id == camera_id)
+    if status and status.upper() != "ALL":
+        query = query.filter(FaceRecognitionDB.status == status.upper())
+    if category and category.upper() != "ALL":
+        query = query.filter(FaceRecognitionDB.category == category.upper())
+    if person_id:
+        query = query.filter(FaceRecognitionDB.person_id == person_id)
+
+    total = query.count()
+    records = query.order_by(FaceRecognitionDB.timestamp.desc()).offset(offset).limit(limit).all()
+
+    items = []
+    for r in records:
+        bbox = [0, 0, 0, 0]
+        try:
+            bbox = json.loads(r.bbox_json or "[0,0,0,0]")
+        except Exception:
+            pass
+        items.append({
+            "recognition_id": r.recognition_id,
+            "camera_id": r.camera_id,
+            "track_id": r.track_id,
+            "person_id": r.person_id,
+            "person_name": r.person_name,
+            "person_rank": r.person_rank,
+            "category": r.category,
+            "confidence": r.confidence,
+            "status": r.status,
+            "snapshot_path": r.snapshot_path,
+            "bbox": bbox,
+            "sha256_hash": r.sha256_hash,
+            "event_id": r.event_id,
+            "timestamp": r.timestamp,
+            "is_demo": bool(r.is_demo),
+            "data_mode": r.data_mode
+        })
+    return {"total": total, "items": items, "limit": limit, "offset": offset}
+
+@router.get("/frs/timeline/{person_id}")
+def get_person_timeline(person_id: str, db: Session = Depends(get_db)):
+    """Computes full cross-camera movement journey and timeline for a person."""
+    recs = db.query(FaceRecognitionDB).filter(
+        FaceRecognitionDB.person_id == person_id
+    ).order_by(FaceRecognitionDB.timestamp.asc()).all()
+
+    if not recs:
+        if person_id.isdigit():
+            recs = db.query(FaceRecognitionDB).filter(
+                FaceRecognitionDB.track_id == int(person_id)
+            ).order_by(FaceRecognitionDB.timestamp.asc()).all()
+
+    if not recs:
+        return {
+            "person_id": person_id,
+            "total_sightings": 0,
+            "unique_cameras": [],
+            "journey": [],
+            "timeline": []
+        }
+
+    cams_visited = []
+    journey = []
+    prev_cam = None
+
+    for r in recs:
+        if r.camera_id not in cams_visited:
+            cams_visited.append(r.camera_id)
+        if r.camera_id != prev_cam:
+            journey.append({
+                "camera_id": r.camera_id,
+                "timestamp": r.timestamp,
+                "confidence": r.confidence,
+                "snapshot_path": r.snapshot_path
+            })
+            prev_cam = r.camera_id
+
+    timeline = [{
+        "recognition_id": r.recognition_id,
+        "camera_id": r.camera_id,
+        "track_id": r.track_id,
+        "timestamp": r.timestamp,
+        "confidence": r.confidence,
+        "status": r.status,
+        "snapshot_path": r.snapshot_path,
+        "sha256_hash": r.sha256_hash
+    } for r in recs]
+
+    first_seen = recs[0].timestamp
+    last_seen = recs[-1].timestamp
+    duration_secs = round(last_seen - first_seen, 1)
+
+    return {
+        "person_id": person_id,
+        "person_name": recs[0].person_name,
+        "person_rank": recs[0].person_rank,
+        "total_sightings": len(recs),
+        "unique_cameras": cams_visited,
+        "first_seen": first_seen,
+        "last_seen": last_seen,
+        "duration_seconds": duration_secs,
+        "journey": journey,
+        "timeline": timeline
+    }
+
+@router.post("/frs/demo/seed")
+def seed_demo_frs_identities():
+    """Seeds realistic synthetic personnel and watchlist targets for isolated FRS demo mode."""
+    from backend.app.services.frs_service import frs_subsystem
+    from backend.app.services.secrets_vault import secrets_vault
+    from backend.app.database.session import SessionLocal
+    db = SessionLocal()
+    try:
+        existing = db.query(FaceGalleryDB).filter(FaceGalleryDB.is_demo == True).count()
+        if existing > 0:
+            return {"status": "already_seeded", "count": existing}
+
+        synthetic_profiles = [
+            {
+                "name": "Captain Vikram Rathore",
+                "rank": "Captain",
+                "designation": "Quick Reaction Team Commander",
+                "organization": "Special Frontier Force",
+                "category": "OPERATIONAL",
+                "status": "ACTIVE",
+                "notes": "Armed tactical commander with Sector Alpha perimeter clearance."
+            },
+            {
+                "name": "Sub-Inspector Priya Sharma",
+                "rank": "Sub-Inspector",
+                "designation": "Intelligence & Surveillance Lead",
+                "organization": "Border Security Force",
+                "category": "OPERATIONAL",
+                "status": "ACTIVE",
+                "notes": "Field C4ISR analysis operator."
+            },
+            {
+                "name": "Havildar Amit Kumar",
+                "rank": "Havildar",
+                "designation": "Perimeter Patrol Guard",
+                "organization": "Border Security Force",
+                "category": "OPERATIONAL",
+                "status": "ACTIVE",
+                "notes": "Assigned to Northern Fence sector night watch."
+            },
+            {
+                "name": "Tariq Aziz",
+                "rank": "Civilian",
+                "designation": "Person of Interest #849",
+                "organization": "Unknown Affiliation",
+                "category": "WATCHLIST",
+                "status": "WATCHLIST",
+                "notes": "RED ALERT: Suspect flagged for unauthorized perimeter reconnaissance."
+            }
+        ]
+
+        seeded_ids = []
+        for p in synthetic_profiles:
+            np.random.seed(abs(hash(p["name"])) % 100000)
+            vec = np.random.randn(128).astype(np.float32)
+            vec /= np.linalg.norm(vec)
+            vec_list = [vec.tolist()]
+
+            enc_embeddings = secrets_vault.encrypt_str(json.dumps(vec_list))
+            pid = f"PER-DEMO-{uuid.uuid4().hex[:6].upper()}"
+
+            entry = FaceGalleryDB(
+                person_id=pid,
+                name=p["name"],
+                rank=p["rank"],
+                designation=p["designation"],
+                organization=p["organization"],
+                category=p["category"],
+                status=p["status"],
+                photo_path=None,
+                photos_json="[]",
+                embeddings_enc=enc_embeddings,
+                quality_score=92.5,
+                notes=p["notes"],
+                is_demo=True
+            )
+            db.add(entry)
+            seeded_ids.append(pid)
+
+        db.commit()
+        frs_subsystem.reload_gallery()
+        return {"status": "seeded", "count": len(seeded_ids), "person_ids": seeded_ids}
+    finally:
+        db.close()

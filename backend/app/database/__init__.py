@@ -1,5 +1,9 @@
 from .session import Base, engine, run_safe_migrations
-from .models import CameraDB, VirtualZoneDB, EventDB, EvidenceDB, ANPRDB, AuditLogDB, SystemConfigDB, OperationalSectorDB
+from .models import (
+    CameraDB, VirtualZoneDB, EventDB, EvidenceDB, ANPRDB,
+    AuditLogDB, SystemConfigDB, OperationalSectorDB, SituationAssessmentDB,
+    ValidationRunDB, FaceGalleryDB, FaceRecognitionDB
+)
 
 def init_db():
     Base.metadata.create_all(bind=engine)

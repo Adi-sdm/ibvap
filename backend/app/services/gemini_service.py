@@ -437,7 +437,7 @@ class GeminiVisionProvider(VisionReasoningProvider):
                         "timestamp": time.time(),
                         "message": f"Multimodal test passed successfully on {target_model} ({latency}ms)."
                     }
-                elif res.status_code in [404, 429]:
+                elif res.status_code in [404, 429, 503]:
                     for fallback in ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3-flash-preview", "gemini-3.5-flash-lite"]:
                         if target_model != fallback:
                             return await self.test_multimodal(frame_bgr=frame_bgr, api_key=key, model=fallback)
@@ -667,10 +667,8 @@ class GeminiVisionProvider(VisionReasoningProvider):
                                 raw_text_available=bool(text_resp),
                                 raw_text=text_resp
                             )
-                        elif res.status_code == 404:
-                            break
-                        elif res.status_code == 429:
-                            print(f"[AI RESPONSE] status_code=429 rate_limited on {attempt_model} -> falling back to next candidate model")
+                        elif res.status_code in [404, 429, 503]:
+                            print(f"[AI RESPONSE] status_code={res.status_code} on {attempt_model} -> falling back to next candidate model")
                             break
                         elif res.status_code in [401, 403]:
                             print(f"[AI RESPONSE] status_code={res.status_code} invalid_credentials latency={latency:.1f}ms")
@@ -681,9 +679,6 @@ class GeminiVisionProvider(VisionReasoningProvider):
                                 error_message="Gemini API credentials invalid or unauthorized. Local AI perception remains active.",
                                 latency_ms=latency
                             )
-                        elif res.status_code == 503 and attempt < self.max_retries:
-                            await asyncio.sleep(1.5)
-                            continue
                         else:
                             latency = (time.time() - start_time) * 1000
                             print(f"[AI RESPONSE] status_code={res.status_code} error latency={latency:.1f}ms")

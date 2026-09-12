@@ -191,3 +191,43 @@ export const runValidationBenchmark = (numFrames = 50, confThreshold = 0.25) =>
   }).then(handleResponse);
 export const getLatestValidationReport = () => fetch(`${API_BASE}/validation/latest`).then(handleResponse);
 
+// Face Recognition System (FRS) Biometric Subsystem
+export const getFRSStatus = () => fetch(`${API_BASE}/frs/status`).then(handleResponse);
+export const getFRSGallery = (category = null, status = null, search = null, dataMode = 'LIVE') => {
+  let url = `${API_BASE}/frs/gallery?data_mode=${encodeURIComponent(dataMode)}`;
+  if (category) url += `&category=${encodeURIComponent(category)}`;
+  if (status) url += `&status=${encodeURIComponent(status)}`;
+  if (search) url += `&search=${encodeURIComponent(search)}`;
+  return fetch(url).then(handleResponse);
+};
+export const enrollFRSPerson = (formData) => fetch(`${API_BASE}/frs/enroll`, { method: 'POST', body: formData }).then(handleResponse);
+export const validateFRSPhoto = (file) => {
+  const fd = new FormData();
+  fd.append('photo', file);
+  return fetch(`${API_BASE}/frs/validate-photo`, { method: 'POST', body: fd }).then(handleResponse);
+};
+export const getFRSPerson = (personId) => fetch(`${API_BASE}/frs/gallery/${encodeURIComponent(personId)}`).then(handleResponse);
+export const updateFRSPerson = (personId, data, operator = 'Administrator') => 
+  fetch(`${API_BASE}/frs/gallery/${encodeURIComponent(personId)}?operator=${encodeURIComponent(operator)}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data)
+  }).then(handleResponse);
+export const deleteFRSPerson = (personId, operator = 'Administrator') => 
+  fetch(`${API_BASE}/frs/gallery/${encodeURIComponent(personId)}?operator=${encodeURIComponent(operator)}`, {
+    method: 'DELETE'
+  }).then(handleResponse);
+export const exportFRSPerson = (personId, operator = 'Supervisor') => 
+  fetch(`${API_BASE}/frs/gallery/${encodeURIComponent(personId)}/export?operator=${encodeURIComponent(operator)}`).then(handleResponse);
+export const getFRSRecognitions = ({ camera_id, status, category, person_id, data_mode = 'LIVE', limit = 50, offset = 0 } = {}) => {
+  let url = `${API_BASE}/frs/recognitions?data_mode=${encodeURIComponent(data_mode)}&limit=${limit}&offset=${offset}`;
+  if (camera_id) url += `&camera_id=${encodeURIComponent(camera_id)}`;
+  if (status) url += `&status=${encodeURIComponent(status)}`;
+  if (category) url += `&category=${encodeURIComponent(category)}`;
+  if (person_id) url += `&person_id=${encodeURIComponent(person_id)}`;
+  return fetch(url).then(handleResponse);
+};
+export const getFRSTimeline = (personId) => fetch(`${API_BASE}/frs/timeline/${encodeURIComponent(personId)}`).then(handleResponse);
+export const seedFRSDemo = () => fetch(`${API_BASE}/frs/demo/seed`, { method: 'POST' }).then(handleResponse);
+
+

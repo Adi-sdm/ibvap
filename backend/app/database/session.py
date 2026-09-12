@@ -4,7 +4,16 @@ from pathlib import Path
 import os
 import shutil
 
-DB_DIR = Path(__file__).resolve().parents[3] / 'database'
+# Persistent Data Separation: checks C:\ProgramData\IBVAP or IBVAP_DATA_DIR first
+env_data_dir = os.environ.get("IBVAP_DATA_DIR")
+prog_data_db = Path("C:/ProgramData/IBVAP/database")
+if env_data_dir and Path(env_data_dir).exists():
+    DB_DIR = Path(env_data_dir) / 'database'
+elif prog_data_db.exists() and (prog_data_db / 'ibvap.db').exists():
+    DB_DIR = prog_data_db
+else:
+    DB_DIR = Path(__file__).resolve().parents[3] / 'database'
+
 DB_DIR.mkdir(parents=True, exist_ok=True)
 DB_FILE = DB_DIR / 'ibvap.db'
 DATABASE_URL = f"sqlite:///{DB_FILE}"

@@ -21,7 +21,21 @@ import {
 export default function SituationAssessmentModal({ assessmentData, onClose, onRefresh, loading }) {
   const [copied, setCopied] = useState(false);
 
-  if (!assessmentData) return null;
+  if (!assessmentData && !loading) return null;
+
+  if (loading && !assessmentData) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="bg-slate-900 border border-sky-500/40 rounded-2xl p-8 max-w-md w-full shadow-2xl text-center space-y-4">
+          <div className="w-12 h-12 rounded-full border-2 border-sky-500 border-t-transparent animate-spin mx-auto" />
+          <div className="space-y-1">
+            <h3 className="text-sm font-bold text-white font-mono uppercase tracking-wider">Synthesizing Tactical Assessment</h3>
+            <p className="text-xs text-slate-400 font-mono">Gathering multi-camera feeds, incident transitions & telemetry for Gemini multimodal reasoning...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const data = assessmentData.assessment || assessmentData;
   const posture = data.posture || 'DEFENSIVE_STABLE';
