@@ -37,14 +37,19 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 # --- CAMERAS ---
 @router.get("/cameras", response_model=List[CameraOut])
 def list_cameras(source: Optional[str] = None, include_demo: bool = False, db: Session = Depends(get_db)):
+    from backend.app.main import system_mode
     query = db.query(CameraDB).filter(CameraDB.is_active == True)
     if source:
         if source.upper() == "LIVE":
             query = query.filter(CameraDB.is_demo == False)
         elif source.upper() == "DEMO":
             query = query.filter(CameraDB.is_demo == True)
+    elif system_mode == "demo":
+        query = query.filter(CameraDB.is_demo == True)
     elif not include_demo:
-        query = query.filter(CameraDB.is_demo == False)
+        live_count = db.query(CameraDB).filter(CameraDB.is_active == True, CameraDB.is_demo == False).count()
+        if live_count > 0:
+            query = query.filter(CameraDB.is_demo == False)
     cams = query.all()
     # Ensure JSON parsing for modules and overlay if stored as strings
     result = []
