@@ -118,6 +118,7 @@ class CameraPipeline(threading.Thread):
         from backend.app.services.risk_engine import risk_engine
         from backend.app.services.event_fusion import fusion_manager
         from backend.app.services.evidence_service import evidence_service
+        from backend.app.services.small_arms import small_arms_detector
         
         self.zone_tracker = ZoneTracker()
         self.annotator = frame_annotator
@@ -139,6 +140,7 @@ class CameraPipeline(threading.Thread):
         self.fusion_manager = fusion_manager
         self.evidence_service = evidence_service
         self.anpr_engine = anpr_engine
+        self.small_arms_detector = small_arms_detector
 
     def _refresh_active_classes(self):
         """Map camera profile and enabled modules to active YOLO class IDs."""
@@ -406,6 +408,13 @@ class CameraPipeline(threading.Thread):
                             if (x1 - 30 <= bcx <= x2 + 30) and (y1 - 30 <= bcy <= y2 + 30):
                                 carried_bag = bname
                                 break
+                        
+                        # Modular small-arms detection: only run if module enabled and weights loaded on disk
+                        if not carried_bag and self.enabled_modules.get("small_arms", False) and getattr(self.small_arms_detector, "available", False):
+                            crop = frame[max(0, int(y1)):min(h_frame, int(y2)), max(0, int(x1)):min(w_frame, int(x2))]
+                            w_res = self.small_arms_detector.detect_weapon(crop)
+                            if w_res and w_res.get("detected"):
+                                carried_bag = w_res.get("label", "Potential weapon-like object")
 
                     foot_x = ((x1 + x2) / 2) / w_frame
                     foot_y = y2 / h_frame

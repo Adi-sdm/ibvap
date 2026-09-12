@@ -30,13 +30,14 @@ def test_system_status_and_readiness():
     assert "subsystems" in readiness
     assert "timestamp" in readiness
     subsystems = readiness["subsystems"]
-    assert len(subsystems) == 10
+    assert len(subsystems) >= 10
     names = [s["name"] for s in subsystems]
     assert any("Database" in n for n in names)
     assert any("Camera Ingestion" in n for n in names)
     assert any("AI Neural Inference" in n for n in names)
     assert any("Tracking" in n for n in names)
     assert any("Evidence" in n for n in names)
+    assert any("Small-Arms" in n for n in names)
 
 def test_system_initialize_and_sectors():
     import time

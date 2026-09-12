@@ -566,6 +566,29 @@ async def consult_gemini_on_demand(event_id: str, db: Session = Depends(get_db))
 
     return result.to_dict()
 
+# --- AI SITUATION ASSESSMENT ---
+@router.post("/ai/situation-assessment")
+async def create_situation_assessment():
+    """Triggers an on-demand comprehensive whole-situation synthesis across all sectors."""
+    from backend.app.services.situation_assessment import situation_assessment_service
+    res = await situation_assessment_service.generate_assessment()
+    return res
+
+@router.get("/ai/situation-assessments")
+def get_situation_assessments(limit: int = 10):
+    """Retrieve historical situation assessments."""
+    from backend.app.services.situation_assessment import situation_assessment_service
+    return situation_assessment_service.get_recent_assessments(limit=limit)
+
+@router.get("/ai/situation-assessments/{assessment_id}")
+def get_situation_assessment_by_id(assessment_id: str):
+    """Retrieve a specific situation assessment by its ID."""
+    from backend.app.services.situation_assessment import situation_assessment_service
+    res = situation_assessment_service.get_assessment_by_id(assessment_id)
+    if not res:
+        raise HTTPException(status_code=404, detail="Situation assessment record not found")
+    return res
+
 # --- SYSTEM CONFIGURATION & SETTINGS ---
 @router.get("/settings", response_model=SystemConfigOut)
 def get_system_settings(db: Session = Depends(get_db)):
@@ -1286,6 +1309,22 @@ def get_system_readiness(db: Session = Depends(get_db)):
             name="Gemini Multimodal Reasoning",
             status="UNCONFIGURED",
             detail="Gemini API unconfigured. System operating truthfully in LOCAL ONLY mode."
+        ))
+
+    # 11. Small-Arms Weapon Detector
+    from backend.app.services.small_arms import small_arms_detector
+    sa_status = small_arms_detector.get_status()
+    if sa_status["available"]:
+        subsystems.append(SystemReadinessSubsystem(
+            name="Small-Arms Neural Detector",
+            status="READY",
+            detail="Dedicated weapon detection neural network loaded"
+        ))
+    else:
+        subsystems.append(SystemReadinessSubsystem(
+            name="Small-Arms Neural Detector",
+            status="NOT LOADED",
+            detail="Weights file 'models/small_arms_yolov8.pt' not present on filesystem. Module truthfully disabled."
         ))
 
     init_config = db.query(SystemConfigDB).filter(SystemConfigDB.key == "system_initialized").first()

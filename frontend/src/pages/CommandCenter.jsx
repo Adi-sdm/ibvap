@@ -10,19 +10,51 @@ import {
   CheckCircle, 
   ChevronRight, 
   AlertTriangle,
-  Layers,
-  Search,
-  ExternalLink,
-  Sparkles
+  Layers, 
+  Search, 
+  ExternalLink, 
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
-import { getCameraStreamUrl, updateEventStatus, getActivityTimeline } from '../services/api';
+import { getCameraStreamUrl, updateEventStatus, getActivityTimeline, triggerSituationAssessment } from '../services/api';
 import RiskBadge from '../components/RiskBadge';
 import LiveAIAnalysisCard from '../components/LiveAIAnalysisCard';
+import SituationAssessmentModal from '../components/SituationAssessmentModal';
 
 export default function CommandCenter({ stats, cameras = [], incidents = [], onSelectIncident, onNavigateToCameras, onRefresh }) {
   const [timeline, setTimeline] = useState([]);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [activeAiCamId, setActiveAiCamId] = useState(null);
+  const [showSituationModal, setShowSituationModal] = useState(false);
+  const [situationData, setSituationData] = useState(null);
+  const [loadingSituation, setLoadingSituation] = useState(false);
+
+  const handleOpenSituationAssessment = async () => {
+    setShowSituationModal(true);
+    if (!situationData) {
+      setLoadingSituation(true);
+      try {
+        const res = await triggerSituationAssessment();
+        setSituationData(res);
+      } catch (err) {
+        console.error("Situation assessment failed:", err);
+      } finally {
+        setLoadingSituation(false);
+      }
+    }
+  };
+
+  const handleRefreshSituationAssessment = async () => {
+    setLoadingSituation(true);
+    try {
+      const res = await triggerSituationAssessment();
+      setSituationData(res);
+    } catch (err) {
+      console.error("Situation assessment refresh failed:", err);
+    } finally {
+      setLoadingSituation(false);
+    }
+  };
 
   // Fetch real-time activity timeline
   useEffect(() => {
@@ -61,6 +93,27 @@ export default function CommandCenter({ stats, cameras = [], incidents = [], onS
 
   return (
     <div className="p-6 space-y-6 max-w-[1800px] mx-auto">
+      {/* Action Header / Top Command Bar */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900/80 border border-slate-800 p-4 rounded-xl backdrop-blur-md">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-mono text-emerald-400">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>HQ COMMAND DESK // C4ISR TACTICAL TELEMETRY</span>
+          </div>
+          <h2 className="text-lg font-bold text-white tracking-tight mt-0.5">Real-Time Border Sector Intelligence</h2>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleOpenSituationAssessment}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white text-xs font-bold font-mono tracking-wider shadow-lg shadow-sky-500/20 flex items-center gap-2 transition hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>AI SITUATION ASSESSMENT</span>
+          </button>
+        </div>
+      </div>
+
       {/* Top Operational Metrics Ribbon */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Metric 1: Connected Cameras */}
@@ -403,6 +456,16 @@ export default function CommandCenter({ stats, cameras = [], incidents = [], onS
                   />
                 </div>
               </div>
+            )}
+
+            {/* AI Situation Assessment Modal */}
+            {showSituationModal && (
+              <SituationAssessmentModal
+                assessmentData={situationData}
+                loading={loadingSituation}
+                onClose={() => setShowSituationModal(false)}
+                onRefresh={handleRefreshSituationAssessment}
+              />
             )}
           </div>
         </div>

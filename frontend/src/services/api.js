@@ -150,3 +150,9 @@ export const setEmergencyMode = (emergency_mode, officer = 'Senior Supervisor', 
 export const getSectors = () => fetch(`${API_BASE}/sectors`).then(handleResponse);
 export const createSector = (data) => fetch(`${API_BASE}/sectors`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) }).then(handleResponse);
 export const deleteSector = (id) => fetch(`${API_BASE}/sectors/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(handleResponse);
+
+// AI Whole-Situation Assessment
+export const triggerSituationAssessment = () => fetch(`${API_BASE}/ai/situation-assessment`, { method: 'POST' }).then(handleResponse);
+export const getSituationAssessments = (limit = 10) => fetch(`${API_BASE}/ai/situation-assessments?limit=${limit}`).then(handleResponse);
+export const getSituationAssessment = (id) => fetch(`${API_BASE}/ai/situation-assessments/${encodeURIComponent(id)}`).then(handleResponse);
+
