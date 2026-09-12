@@ -76,7 +76,7 @@ export default function SettingsPage({ systemMode, onRefresh }) {
     anomaly_sensitivity: 0.75,
     alert_threshold: 60,
     evidence_retention_days: 30,
-    gemini_model: 'gemini-2.0-flash',
+    gemini_model: 'gemini-2.5-flash',
     gemini_low_conf_threshold: 0.45,
     gemini_auto_trigger: true,
     cooldown_seconds: 15
@@ -87,14 +87,14 @@ export default function SettingsPage({ systemMode, onRefresh }) {
   // Gemini state
   const [geminiStatus, setGeminiStatus] = useState({
     configured: false,
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash',
     enabled: true,
     masked_key: null,
     status: 'UNCONFIGURED'
   });
   const [newKey, setNewKey] = useState('');
   const [showKey, setShowKey] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('gemini-2.0-flash');
+  const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash');
   const [customModel, setCustomModel] = useState('');
   const [testingGemini, setTestingGemini] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -188,7 +188,7 @@ export default function SettingsPage({ systemMode, onRefresh }) {
     if (!newKey && selectedModel === geminiStatus.model) return;
     setSavingGemini(true);
     try {
-      const targetModel = selectedModel === 'custom' ? (customModel || 'gemini-2.0-flash') : selectedModel;
+      const targetModel = selectedModel === 'custom' ? (customModel || 'gemini-2.5-flash') : selectedModel;
       const res = await updateGeminiConfig({
         api_key: newKey || undefined,
         model: targetModel,
@@ -615,7 +615,7 @@ export default function SettingsPage({ systemMode, onRefresh }) {
                       onChange={e => setSelectedModel(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-800 px-3 py-1.5 rounded text-xs text-white focus:outline-none focus:border-sky-500 font-sans"
                     >
-                      <option value="gemini-2.0-flash">gemini-2.0-flash (Recommended)</option>
+                      <option value="gemini-2.5-flash">gemini-2.5-flash (Recommended)</option>
                       <option value="gemini-1.5-flash">gemini-1.5-flash</option>
                       <option value="gemini-1.5-pro">gemini-1.5-pro</option>
                       <option value="custom">Custom Model Name...</option>

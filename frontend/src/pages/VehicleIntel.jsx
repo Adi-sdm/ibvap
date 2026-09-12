@@ -23,12 +23,16 @@ import {
   deleteAuthorizedVehicle, 
   getANPR,
   verifyVehicleIntel,
-  getVehicleHandoff
+  getVehicleHandoff,
+  getVehicleCorridors,
+  getCameras
 } from '../services/api';
 
 export default function VehicleIntel() {
   const [vehicles, setVehicles] = useState([]);
   const [anprLogs, setAnprLogs] = useState([]);
+  const [cameras, setCameras] = useState([]);
+  const [corridors, setCorridors] = useState([]);
   const [activeSubTab, setActiveSubTab] = useState('Registry');
   const [searchFilter, setSearchFilter] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -40,7 +44,7 @@ export default function VehicleIntel() {
   const [formDept, setFormDept] = useState('Border Security Force');
   const [formType, setFormType] = useState('SUV');
   const [formColor, setFormColor] = useState('WHITE');
-  const [formSectors, setFormSectors] = useState('Sector Alpha, Sector Bravo');
+  const [formSectors, setFormSectors] = useState('');
   const [formStatus, setFormStatus] = useState('ACTIVE');
   const [formNotes, setFormNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -48,12 +52,16 @@ export default function VehicleIntel() {
 
   const fetchData = async () => {
     try {
-      const [vRes, aRes] = await Promise.all([
-        getAuthorizedVehicles(),
-        getANPR(0, 30)
+      const [vRes, aRes, cRes, corRes] = await Promise.all([
+        getAuthorizedVehicles().catch(() => []),
+        getANPR(0, 30).catch(() => ({ items: [] })),
+        getCameras().catch(() => []),
+        getVehicleCorridors().catch(() => [])
       ]);
       setVehicles(vRes || []);
       setAnprLogs(aRes?.items || []);
+      setCameras(cRes || []);
+      setCorridors(corRes || []);
     } catch (err) {
       console.error("Failed to load vehicle intelligence:", err);
     } finally {
@@ -106,7 +114,7 @@ export default function VehicleIntel() {
 
   const handleQuickVerify = async (plate) => {
     try {
-      const res = await verifyVehicleIntel(plate, 'WHITE', 'Sector Alpha');
+      const res = await verifyVehicleIntel(plate, 'WHITE', 'All Sectors');
       setTestResult(res);
     } catch (err) {
       console.error("Verify test failed:", err);
@@ -173,8 +181,12 @@ export default function VehicleIntel() {
 
         <div className="bg-slate-900 border border-slate-800 p-4 rounded-lg">
           <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Cross-Camera Handoff</span>
-          <div className="text-2xl font-bold font-mono text-amber-400 mt-1">ACTIVE</div>
-          <span className="text-[10px] text-slate-500 font-mono">Predictive Correlation</span>
+          <div className={`text-2xl font-bold font-mono mt-1 ${cameras.length >= 2 ? 'text-emerald-400' : 'text-amber-400'}`}>
+            {cameras.length >= 2 ? 'ONLINE' : 'STANDBY'}
+          </div>
+          <span className="text-[10px] text-slate-500 font-mono">
+            {cameras.length >= 2 ? `${corridors.length} Corridors Active` : 'Requires ≥2 Calibrated Nodes'}
+          </span>
         </div>
       </div>
 
@@ -351,57 +363,49 @@ export default function VehicleIntel() {
             <Compass className="w-4 h-4 text-cyan-400" />
             <span>Cross-Camera Handoff & Trajectory Prediction Matrix</span>
           </div>
-          <p className="text-slate-400 leading-relaxed text-xs">
-            IBVAP correlates multi-camera vehicle sightings along border roads. When a target is detected traveling on Sector Alpha Road, downstream cameras are automatically primed with target features and expected ETA.
+          <p className="text-slate-400 leading-relaxed text-xs font-sans">
+            IBVAP correlates multi-camera vehicle sightings along border roads. When a target is detected traveling along a perimeter route, downstream cameras are automatically primed with target features and expected arrival ETA based on real GPS spatial coordinates.
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-            <div className="p-4 bg-slate-950 rounded border border-slate-800 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-white text-sm">Corridor Alpha → Bravo</span>
-                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px]">
-                  CORRELATION 88%
-                </span>
-              </div>
-              <div className="flex items-center space-x-3 text-slate-300">
-                <div className="p-2 bg-slate-900 border border-slate-800 rounded text-center">
-                  <div className="text-[10px] text-slate-500">ORIGIN</div>
-                  <div className="font-bold text-cyan-400">CAM-01</div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-slate-500" />
-                <div className="p-2 bg-slate-900 border border-slate-800 rounded text-center">
-                  <div className="text-[10px] text-slate-500">PREDICTED DOWNSTREAM</div>
-                  <div className="font-bold text-emerald-400">CAM-02 (North Gate)</div>
-                </div>
-              </div>
-              <div className="text-[11px] text-slate-400">
-                Estimated Transit ETA: <span className="text-white font-bold">~45 Seconds</span> at 40 km/h
+          {corridors.length === 0 ? (
+            <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-8 text-center space-y-3 font-mono">
+              <Compass className="w-10 h-10 text-slate-600 mx-auto" />
+              <h4 className="text-sm font-bold text-slate-300 uppercase tracking-wider">No Active Cross-Camera Corridors</h4>
+              <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed font-sans">
+                Predictive corridor handoff and transit estimation require at least 2 spatially calibrated surveillance cameras with GPS coordinates. Currently {cameras.length} camera(s) registered in the platform.
+              </p>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded bg-slate-950 border border-slate-800 text-[11px] text-amber-400 font-mono">
+                STATUS: STANDBY (AWAITING MULTI-NODE CALIBRATION)
               </div>
             </div>
-
-            <div className="p-4 bg-slate-950 rounded border border-slate-800 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-white text-sm">Corridor Bravo → Charlie</span>
-                <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px]">
-                  CORRELATION 82%
-                </span>
-              </div>
-              <div className="flex items-center space-x-3 text-slate-300">
-                <div className="p-2 bg-slate-900 border border-slate-800 rounded text-center">
-                  <div className="text-[10px] text-slate-500">ORIGIN</div>
-                  <div className="font-bold text-cyan-400">CAM-02</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+              {corridors.map((c) => (
+                <div key={c.corridor_id} className="p-4 bg-slate-950 rounded border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-white text-sm">{c.name}</span>
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px]">
+                      CORRELATION {Math.round(c.correlation_confidence * 100)}%
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-3 text-slate-300">
+                    <div className="p-2 bg-slate-900 border border-slate-800 rounded text-center">
+                      <div className="text-[10px] text-slate-500">ORIGIN</div>
+                      <div className="font-bold text-cyan-400">{c.origin_name || c.origin_camera}</div>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-500" />
+                    <div className="p-2 bg-slate-900 border border-slate-800 rounded text-center">
+                      <div className="text-[10px] text-slate-500">PREDICTED DOWNSTREAM</div>
+                      <div className="font-bold text-emerald-400">{c.destination_name || c.destination_camera}</div>
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Geodesic Distance: <span className="text-white font-bold">{c.distance_meters}m</span> • Est. Transit: <span className="text-emerald-400 font-bold">~{c.estimated_transit_seconds}s</span> at 40 km/h
+                  </div>
                 </div>
-                <ArrowRight className="w-4 h-4 text-slate-500" />
-                <div className="p-2 bg-slate-900 border border-slate-800 rounded text-center">
-                  <div className="text-[10px] text-slate-500">PREDICTED DOWNSTREAM</div>
-                  <div className="font-bold text-emerald-400">CAM-03 (Border Bridge)</div>
-                </div>
-              </div>
-              <div className="text-[11px] text-slate-400">
-                Estimated Transit ETA: <span className="text-white font-bold">~40 Seconds</span> at 45 km/h
-              </div>
+              ))}
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -484,7 +488,7 @@ export default function VehicleIntel() {
                 <label className="block text-[11px] font-mono text-slate-400 mb-1">Authorized Sectors</label>
                 <input
                   type="text"
-                  placeholder="e.g. Sector Alpha, Sector Bravo"
+                  placeholder="e.g. Sector North, Sector South (or leave blank for All Sectors)"
                   value={formSectors}
                   onChange={(e) => setFormSectors(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 px-3 py-1.5 rounded text-white font-mono focus:border-cyan-500 focus:outline-none"

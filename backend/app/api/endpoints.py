@@ -954,7 +954,7 @@ def add_authorized_vehicle(veh: AuthorizedVehicleCreate, db: Session = Depends(g
         department=veh.department or "Border Security Force",
         vehicle_type=veh.vehicle_type or "SUV",
         authorized_color=veh.authorized_color.upper() if veh.authorized_color else "WHITE",
-        authorized_sectors=veh.authorized_sectors or "Sector Alpha, Sector Bravo",
+        authorized_sectors=veh.authorized_sectors or "All Sectors",
         status=veh.status or "ACTIVE",
         notes=veh.notes
     )
@@ -1023,7 +1023,7 @@ def add_authorized_person(pers: AuthorizedPersonCreate, db: Session = Depends(ge
         role=pers.role or "Patrol Guard",
         clearance_level=pers.clearance_level or "RESTRICTED",
         status=pers.status or "ACTIVE",
-        assigned_sector=pers.assigned_sector or "Sector Alpha"
+        assigned_sector=pers.assigned_sector or "Unassigned"
     )
     db.add(new_p)
     db.commit()
@@ -1277,13 +1277,13 @@ def get_system_readiness(db: Session = Depends(get_db)):
     is_gemini = secrets_vault.is_gemini_configured()
     if is_gemini:
         subsystems.append(SystemReadinessSubsystem(
-            name="Gemini 2.0 Reasoning",
+            name="Gemini Multimodal Reasoning",
             status="CONFIGURED",
-            detail="Gemini cloud reasoning credentials active"
+            detail="Gemini cloud reasoning credentials active (gemini-2.5-flash)"
         ))
     else:
         subsystems.append(SystemReadinessSubsystem(
-            name="Gemini 2.0 Reasoning",
+            name="Gemini Multimodal Reasoning",
             status="UNCONFIGURED",
             detail="Gemini API unconfigured. System operating truthfully in LOCAL ONLY mode."
         ))

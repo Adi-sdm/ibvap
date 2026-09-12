@@ -145,15 +145,50 @@ export default function GeminiAnalysisCard({ incident, onUpdated }) {
             </div>
 
             {geminiData && geminiStatus === 'COMPLETED' ? (
-              <div className="space-y-2.5 text-xs">
+              <div className="space-y-3 text-xs">
                 <div>
                   <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
                     Situational Assessment
                   </span>
                   <p className="text-slate-200 leading-relaxed font-sans mt-0.5">
-                    {geminiData.situational_assessment || 'Snapshot evaluated.'}
+                    {geminiData.situational_assessment || geminiData.scene_summary || 'Snapshot evaluated.'}
                   </p>
                 </div>
+
+                {/* Structured Observed Entities with Truthfulness Badges */}
+                {Array.isArray(geminiData.observed_entities) && geminiData.observed_entities.length > 0 && (
+                  <div>
+                    <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block mb-1">
+                      Observed Entities & Truthfulness
+                    </span>
+                    <div className="space-y-1">
+                      {geminiData.observed_entities.map((e, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-1.5 rounded bg-slate-900/70 border border-slate-800 text-[11px] font-mono">
+                          <span className="text-slate-200">
+                            {e.count > 1 ? `${e.count}x ` : ''}<strong className="capitalize">{e.class}</strong>: {e.description}
+                          </span>
+                          <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold border ${
+                            e.certainty === 'OBSERVED' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' :
+                            e.certainty === 'INFERRED' ? 'bg-sky-500/10 text-sky-300 border-sky-500/30' :
+                            'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                          }`}>
+                            {e.certainty || 'OBSERVED'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Local AI Consistency Cross-Check */}
+                {geminiData.local_ai_consistency && (
+                  <div className="p-2 rounded bg-slate-900/60 border border-slate-800 flex items-center justify-between text-[11px] font-mono">
+                    <span className="text-slate-400">Local YOLOv8 Agreement:</span>
+                    <span className={geminiData.local_ai_consistency.matches_local_yolo ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                      {geminiData.local_ai_consistency.matches_local_yolo ? '✓ CONSISTENT' : '⚠ DISCREPANCY'}
+                    </span>
+                  </div>
+                )}
 
                 <div>
                   <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
@@ -172,6 +207,20 @@ export default function GeminiAnalysisCard({ incident, onUpdated }) {
                     {geminiData.recommended_operator_response || 'Follow standard perimeter patrol procedure.'}
                   </p>
                 </div>
+
+                {/* Recommended Operator Verification Checks */}
+                {Array.isArray(geminiData.recommended_checks) && geminiData.recommended_checks.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
+                      Mandatory Verification Checks
+                    </span>
+                    {geminiData.recommended_checks.map((chk, idx) => (
+                      <div key={idx} className="text-[10px] font-mono text-slate-300 flex items-center gap-1.5">
+                        <span className="text-sky-400">▸</span> {chk}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {Array.isArray(geminiData.threat_indicators) && geminiData.threat_indicators.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1">

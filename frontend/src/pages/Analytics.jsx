@@ -198,7 +198,7 @@ export default function Analytics() {
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={cameraData.length > 0 ? cameraData : [{ name: 'cam-01', count: 0 }]} layout="vertical">
+              <BarChart data={cameraData.length > 0 ? cameraData : [{ name: 'None', count: 0 }]} layout="vertical">
                 <XAxis type="number" stroke="#64748b" fontSize={10} allowDecimals={false} />
                 <YAxis dataKey="name" type="category" stroke="#64748b" fontSize={10} width={90} />
                 <Tooltip contentStyle={{ backgroundColor: '#020617', borderColor: '#1e293b', fontSize: 11, borderRadius: 6 }} />
@@ -220,7 +220,7 @@ export default function Analytics() {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie 
-                  data={typeData.length > 0 ? typeData : [{ name: 'Perimeter Breach', value: 1 }]} 
+                  data={typeData.length > 0 ? typeData : [{ name: 'No Incidents', value: 1, color: '#334155' }]} 
                   cx="50%" 
                   cy="50%" 
                   outerRadius={90} 

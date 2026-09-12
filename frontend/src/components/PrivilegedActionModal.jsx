@@ -118,7 +118,7 @@ export default function PrivilegedActionModal({
           <div>
             <div className="flex justify-between items-center text-[11px] mb-1">
               <label className="text-slate-400">Security Authorization Passcode:</label>
-              <span className="text-slate-500 text-[10px] font-mono">(Demo: admin123)</span>
+              <span className="text-slate-500 text-[10px] font-mono">Mandatory Passcode</span>
             </div>
             <div className="relative">
               <input

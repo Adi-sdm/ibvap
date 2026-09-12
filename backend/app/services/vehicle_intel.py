@@ -17,8 +17,7 @@ class VehicleIntelService:
         self.camera_topology = {
             "CAM-01": [("CAM-02", 45, 0.88), ("CAM-03", 90, 0.65)],
             "CAM-02": [("CAM-03", 40, 0.85), ("CAM-01", 50, 0.75)],
-            "CAM-03": [("CAM-04", 60, 0.80), ("CAM-02", 40, 0.82)],
-            "CAM-E2E-TEST": [("CAM-01", 30, 0.90)]
+            "CAM-03": [("CAM-04", 60, 0.80), ("CAM-02", 40, 0.82)]
         }
 
     def estimate_dominant_color(self, crop_bgr: np.ndarray) -> str:
@@ -177,6 +176,7 @@ class VehicleIntelService:
                 current_cam = db.query(CameraDB).filter(CameraDB.camera_id == current_cam_id).first()
                 if current_cam and current_cam.latitude is not None and current_cam.longitude is not None:
                     other_cams = db.query(CameraDB).filter(
+                        CameraDB.is_active == True,
                         CameraDB.camera_id != current_cam_id,
                         CameraDB.latitude.isnot(None),
                         CameraDB.longitude.isnot(None)
@@ -194,7 +194,7 @@ class VehicleIntelService:
                             a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
                             c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
                             dist_m = 6371000.0 * c
-                            if dist_m < min_dist:
+                            if 10.0 <= dist_m < min_dist:
                                 min_dist = dist_m
                                 best_cam = ocam
 
@@ -231,12 +231,13 @@ class VehicleIntelService:
 
     def get_active_corridors(self, db: Session) -> List[Dict[str, Any]]:
         """
-        Dynamically computes all pairwise corridors between calibrated cameras in the database.
+        Dynamically computes all pairwise corridors between active calibrated cameras in the database.
         Returns empty list if fewer than 2 calibrated cameras exist.
         """
         import math
         from backend.app.database.models import CameraDB
         cams = db.query(CameraDB).filter(
+            CameraDB.is_active == True,
             CameraDB.latitude.isnot(None),
             CameraDB.longitude.isnot(None)
         ).all()
@@ -254,7 +255,7 @@ class VehicleIntelService:
                 a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
                 c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
                 dist_m = 6371000.0 * c
-                if dist_m <= 4000.0:
+                if 10.0 <= dist_m <= 4000.0:
                     eta_sec = max(10, int(dist_m / 11.11))
                     conf = round(max(0.60, min(0.95, 1.0 - (dist_m / 5000.0))), 2)
                     corridors.append({
