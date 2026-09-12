@@ -571,11 +571,11 @@ async def consult_camera_gemini(camera_id: str, db: Session = Depends(get_db)):
         "camera_id": camera_id,
         "event_type": "OPERATOR_LIVE_ADVISORY",
         "severity": "MEDIUM",
-        "class_name": cam.stream_type or "perimeter",
+        "class_name": getattr(cam, "profile", "perimeter"),
         "risk_score": 45,
         "behaviour": "Operator live verification requested",
-        "profile": cam.camera_profile or "Border Fence",
-        "sector": cam.sector or "Sector North",
+        "profile": getattr(cam, "profile", "Border Fence Monitoring"),
+        "sector": getattr(cam, "sector", "Sector North"),
         "telemetry": telemetry
     }
 
@@ -672,7 +672,7 @@ def get_system_settings(db: Session = Depends(get_db)):
         anomaly_sensitivity=float(cfg_map.get("anomaly_sensitivity", 0.75)),
         alert_threshold=int(cfg_map.get("alert_threshold", 60)),
         evidence_retention_days=int(cfg_map.get("evidence_retention_days", 30)),
-        gemini_model=cfg_map.get("gemini_model", "gemini-2.5-flash"),
+        gemini_model=cfg_map.get("gemini_model", "gemini-3.6-flash"),
         gemini_low_conf_threshold=float(cfg_map.get("gemini_low_conf_threshold", 0.45)),
         gemini_auto_trigger=cfg_map.get("gemini_auto_trigger", "true").lower() in ["true", "1"],
         cooldown_seconds=int(cfg_map.get("cooldown_seconds", 15)),
@@ -1427,7 +1427,7 @@ def get_system_readiness(db: Session = Depends(get_db)):
         subsystems.append(SystemReadinessSubsystem(
             name="Gemini Multimodal Reasoning",
             status="CONFIGURED",
-            detail="Gemini cloud reasoning credentials active (gemini-2.5-flash)"
+            detail=f"Gemini cloud reasoning credentials active ({gemini_service.get_configured_model()})"
         ))
     else:
         subsystems.append(SystemReadinessSubsystem(

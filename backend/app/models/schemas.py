@@ -251,7 +251,7 @@ class SystemConfigOut(BaseModel):
     anomaly_sensitivity: float = 0.75
     alert_threshold: int = 60
     evidence_retention_days: int = 30
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.6-flash"
     gemini_low_conf_threshold: float = 0.45
     gemini_auto_trigger: bool = True
     cooldown_seconds: int = 15
@@ -287,7 +287,7 @@ class GeminiStatusResponse(BaseModel):
 
 class GeminiConfigUpdate(BaseModel):
     api_key: Optional[str] = None
-    model: Optional[str] = "gemini-2.5-flash"
+    model: Optional[str] = "gemini-3.6-flash"
     enabled: Optional[bool] = True
     rate_limit_rpm: Optional[int] = 10
     low_conf_threshold: Optional[float] = 0.45

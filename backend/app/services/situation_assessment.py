@@ -30,7 +30,7 @@ EVIDENCE_DIR = PROJECT_ROOT / "database" / "evidence"
 
 class SituationAssessmentService:
     def __init__(self):
-        self.default_model = "gemini-2.5-flash"
+        self.default_model = "gemini-3.6-flash"
 
     def _get_system_mode(self, db) -> str:
         try:
