@@ -512,7 +512,14 @@ class CameraPipeline(threading.Thread):
                         
                         fused = self.fusion_manager.process_event(zone_event)
                         if fused:
-                            self._store_event(zone_event, cls_name, conf, frame)
+                            is_new = fused.get("is_new", False)
+                            is_escalation = fused.get("is_escalation", False)
+                            last_store = fused.get("last_store_time", 0)
+                            now_t = time.time()
+                            # Only store and broadcast on initial detection, escalation, or throttled interval (15s)
+                            if is_new or is_escalation or (now_t - last_store > 15.0):
+                                fused["last_store_time"] = now_t
+                                self._store_event(fused, cls_name, conf, frame, is_new=is_new, is_escalation=is_escalation)
 
                     # Framing & Posture Estimation (truthful geometry-based classification)
                     bw = (x2 - x1) / max(w_frame, 1)
@@ -596,50 +603,72 @@ class CameraPipeline(threading.Thread):
             cap.release()
         self.health_status["status"] = "OFFLINE"
 
-    def _store_event(self, fused_event: dict, cls_name: str, conf: float, frame):
-        """Store event in database, trigger secondary Gemini advisory if qualified, and enqueue evidence."""
+    def _store_event(self, fused_event: dict, cls_name: str, conf: float, frame, is_new: bool = True, is_escalation: bool = False):
+        """Store event idempotently in database, trigger secondary Gemini advisory if qualified, and enqueue keyframe evidence."""
         try:
             from backend.app.database.session import SessionLocal
             from backend.app.database.models import EventDB
             
-            event_id = fused_event.get("event_id", str(uuid.uuid4()))
+            event_id = fused_event.get("event_id") or str(uuid.uuid4())
+            fused_event["event_id"] = event_id
+            now_t = time.time()
+            data_mode = "DEMO" if self.is_demo else "LIVE"
+
             db = SessionLocal()
             try:
-                event = EventDB(
-                    event_id=event_id,
-                    camera_id=self.camera_id,
-                    event_type=fused_event["event_type"],
-                    severity=fused_event["severity"],
-                    timestamp=time.time(),
-                    track_id=fused_event.get("track_id"),
-                    confidence=conf,
-                    risk_score=fused_event["risk_score"],
-                    zone_id=fused_event.get("zone_id"),
-                    zone_name=fused_event.get("zone_name"),
-                    class_name=cls_name,
-                    ai_summary=fused_event.get("ai_summary"),
-                    behaviour=fused_event.get("behaviour", "Normal"),
-                    detected_objects=json.dumps(fused_event.get("detected_objects", [cls_name])),
-                    explainability=json.dumps(fused_event.get("explainability", [])),
-                    gemini_status="PENDING" if self.gemini_enabled else "NONE",
-                    status="NEW",
-                    is_demo=self.is_demo,
-                )
-                db.add(event)
-                db.commit()
+                existing = db.query(EventDB).filter(EventDB.event_id == event_id).first()
+                if existing:
+                    # Update existing record with updated threat metrics
+                    if fused_event.get("risk_score", 0) > existing.risk_score:
+                        existing.risk_score = fused_event["risk_score"]
+                        existing.severity = fused_event["severity"]
+                        existing.event_type = fused_event["event_type"]
+                    existing.ai_summary = fused_event.get("ai_summary", existing.ai_summary)
+                    existing.behaviour = fused_event.get("behaviour", existing.behaviour)
+                    existing.explainability = json.dumps(fused_event.get("explainability", []))
+                    existing.detected_objects = json.dumps(fused_event.get("detected_objects", [cls_name]))
+                    db.commit()
+                else:
+                    event = EventDB(
+                        event_id=event_id,
+                        camera_id=self.camera_id,
+                        event_type=fused_event["event_type"],
+                        severity=fused_event["severity"],
+                        timestamp=now_t,
+                        track_id=fused_event.get("track_id"),
+                        confidence=conf,
+                        risk_score=fused_event["risk_score"],
+                        zone_id=fused_event.get("zone_id"),
+                        zone_name=fused_event.get("zone_name"),
+                        class_name=cls_name,
+                        ai_summary=fused_event.get("ai_summary"),
+                        behaviour=fused_event.get("behaviour", "Normal"),
+                        detected_objects=json.dumps(fused_event.get("detected_objects", [cls_name])),
+                        explainability=json.dumps(fused_event.get("explainability", [])),
+                        gemini_status="PENDING" if self.gemini_enabled else "NONE",
+                        status="NEW",
+                        is_demo=self.is_demo,
+                        data_mode=data_mode,
+                    )
+                    db.add(event)
+                    db.commit()
             finally:
                 db.close()
             
-            # Enqueue evidence capture
-            try:
-                self.evidence_queue.put_nowait({
-                    "event_id": event_id,
-                    "event_data": fused_event,
-                    "frame": frame.copy(),
-                    "recent_frames": list(self.recent_frames[-50:]),
-                })
-            except queue.Full:
-                print(f"[{self.camera_id}] Evidence queue full, skipping capture for {event_id}")
+            # Enqueue evidence capture strictly on new events, escalation, or throttled dwell (>= 15s)
+            last_ev_time = fused_event.get("last_evidence_capture", 0)
+            if is_new or is_escalation or (now_t - last_ev_time > 15.0):
+                fused_event["last_evidence_capture"] = now_t
+                try:
+                    self.evidence_queue.put_nowait({
+                        "event_id": event_id,
+                        "event_data": fused_event,
+                        "frame": frame.copy(),
+                        "recent_frames": list(self.recent_frames[-50:]),
+                        "data_mode": data_mode
+                    })
+                except queue.Full:
+                    print(f"[{self.camera_id}] Evidence queue full, skipping capture for {event_id}")
             
             # Callback for WebSocket broadcast
             if self.event_callback:
@@ -657,9 +686,10 @@ class CameraPipeline(threading.Thread):
                     "behaviour": fused_event.get("behaviour", "Normal"),
                     "detected_objects": fused_event.get("detected_objects", [cls_name]),
                     "confidence": conf,
-                    "timestamp": time.time(),
+                    "timestamp": now_t,
                     "explainability": fused_event.get("explainability", []),
-                    "incident": fused_event
+                    "incident": fused_event,
+                    "data_mode": data_mode
                 })
 
             # Check secondary Gemini automated advisory trigger (non-blocking in background)
@@ -757,7 +787,10 @@ class CameraPipeline(threading.Thread):
                             snapshot_path=evidence_info.get("snapshot_path"),
                             video_clip_path=evidence_info.get("clip_path"),
                             metadata_path=evidence_info.get("metadata_path"),
-                            sha256_hash=evidence_info.get("sha256_hash")
+                            sha256_hash=evidence_info.get("sha256_hash"),
+                            evidence_type="KEYFRAME",
+                            state="SEALED",
+                            data_mode=item.get("data_mode", "LIVE")
                         )
                         db.merge(db_evi)
                         db.commit()
