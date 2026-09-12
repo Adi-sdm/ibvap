@@ -658,6 +658,37 @@ class CameraPipeline(threading.Thread):
                             fused_wl["last_store_time"] = now_t
                             self._store_event(fused_wl, "person", float(wl_conf), frame, is_new=True, is_escalation=True)
 
+                    # Situational Safety Anomaly Dispatch
+                    if frs_data and frs_data.get("situation") == "UNSAFE" and not frs_data.get("is_watchlist"):
+                        safety_reason = frs_data.get("situation_reason", "Unsafe situational anomaly detected.")
+                        cand_label = frs_data.get("candidate_id") or frs_data.get("label", "Unknown Entity")
+                        safety_event = {
+                            "camera_id": self.camera_id,
+                            "track_id": track_id,
+                            "event_type": "UNSAFE_SITUATIONAL_BEHAVIOR",
+                            "zone_id": f"SAFETY_{self.camera_id}",
+                            "zone_name": f"{self.sector} Perimeter",
+                            "zone_type": "RESTRICTED",
+                            "class_name": "person",
+                            "confidence": float(conf),
+                            "timestamp": time.time(),
+                            "risk_score": 88,
+                            "severity": "High",
+                            "explainability": [
+                                f"Subject: {cand_label}",
+                                f"Reason: {safety_reason}",
+                                "Situational Safety Engine Assessment"
+                            ],
+                            "ai_summary": f"SITUATIONAL UNSAFE: {cand_label} — {safety_reason}",
+                            "behaviour": behaviour_label,
+                            "detected_objects": ["person", "situational_anomaly"]
+                        }
+                        fused_safety = self.fusion_manager.process_event(safety_event)
+                        now_t = time.time()
+                        if fused_safety and (fused_safety.get("is_new", False) or (now_t - fused_safety.get("last_store_time", 0) > 25.0)):
+                            fused_safety["last_store_time"] = now_t
+                            self._store_event(fused_safety, "person", float(conf), frame, is_new=True, is_escalation=True)
+
                     current_detections.append({
                         "bbox": [x1, y1, x2, y2],
                         "class_name": cls_name,

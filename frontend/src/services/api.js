@@ -216,18 +216,42 @@ export const updateFRSPerson = (personId, data, operator = 'Administrator') =>
 export const deleteFRSPerson = (personId, operator = 'Administrator') => 
   fetch(`${API_BASE}/frs/gallery/${encodeURIComponent(personId)}?operator=${encodeURIComponent(operator)}`, {
     method: 'DELETE'
-  }).then(handleResponse);
 export const exportFRSPerson = (personId, operator = 'Supervisor') => 
   fetch(`${API_BASE}/frs/gallery/${encodeURIComponent(personId)}/export?operator=${encodeURIComponent(operator)}`).then(handleResponse);
-export const getFRSRecognitions = ({ camera_id, status, category, person_id, data_mode = 'LIVE', limit = 50, offset = 0 } = {}) => {
+export const getFRSCapabilities = () => fetch(`${API_BASE}/frs/capabilities`).then(handleResponse);
+
+export const getFRSUnknownCandidates = ({ status = null, search = null, data_mode = 'LIVE', limit = 50, offset = 0 } = {}) => {
+  let url = `${API_BASE}/frs/unknown-candidates?data_mode=${encodeURIComponent(data_mode)}&limit=${limit}&offset=${offset}`;
+  if (status) url += `&status=${encodeURIComponent(status)}`;
+  if (search) url += `&search=${encodeURIComponent(search)}`;
+  return fetch(url).then(handleResponse);
+};
+
+export const getFRSUnknownCandidate = (candidateId) => fetch(`${API_BASE}/frs/unknown-candidates/${encodeURIComponent(candidateId)}`).then(handleResponse);
+
+export const promoteFRSUnknownCandidate = (candidateId, body) => 
+  fetch(`${API_BASE}/frs/unknown-candidates/${encodeURIComponent(candidateId)}/promote`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  }).then(handleResponse);
+
+export const deleteFRSUnknownCandidate = (candidateId, operator = 'Administrator') => 
+  fetch(`${API_BASE}/frs/unknown-candidates/${encodeURIComponent(candidateId)}?operator=${encodeURIComponent(operator)}`, {
+    method: 'DELETE'
+  }).then(handleResponse);
+
+export const getFRSRecognitions = ({ camera_id, status, category, person_id, candidate_id, data_mode = 'LIVE', limit = 50, offset = 0 } = {}) => {
   let url = `${API_BASE}/frs/recognitions?data_mode=${encodeURIComponent(data_mode)}&limit=${limit}&offset=${offset}`;
   if (camera_id) url += `&camera_id=${encodeURIComponent(camera_id)}`;
   if (status) url += `&status=${encodeURIComponent(status)}`;
   if (category) url += `&category=${encodeURIComponent(category)}`;
   if (person_id) url += `&person_id=${encodeURIComponent(person_id)}`;
+  if (candidate_id) url += `&candidate_id=${encodeURIComponent(candidate_id)}`;
   return fetch(url).then(handleResponse);
 };
 export const getFRSTimeline = (personId) => fetch(`${API_BASE}/frs/timeline/${encodeURIComponent(personId)}`).then(handleResponse);
 export const seedFRSDemo = () => fetch(`${API_BASE}/frs/demo/seed`, { method: 'POST' }).then(handleResponse);
+
 
 

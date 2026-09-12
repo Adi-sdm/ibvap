@@ -130,6 +130,23 @@ def run_safe_migrations():
         except Exception as e:
             print(f"[Database Migration] Error migrating anpr: {e}")
 
-    # Ensure all tables exist (creates situation_assessments, validation_runs, etc.)
+        # 5. Face Recognitions table columns
+        try:
+            result = conn.execute(text("PRAGMA table_info(face_recognitions)"))
+            existing_fr_cols = {row[1] for row in result.fetchall()}
+            fr_cols_to_add = [
+                ("candidate_id", "TEXT"),
+                ("situation", "TEXT DEFAULT 'SAFE'"),
+                ("situation_reason", "TEXT"),
+            ]
+            for col_name, col_def in fr_cols_to_add:
+                if col_name not in existing_fr_cols:
+                    conn.execute(text(f"ALTER TABLE face_recognitions ADD COLUMN {col_name} {col_def}"))
+                    print(f"[Database Migration] Added face_recognitions.{col_name}")
+            conn.commit()
+        except Exception as e:
+            print(f"[Database Migration] Error migrating face_recognitions: {e}")
+
+    # Ensure all tables exist (creates situation_assessments, validation_runs, unknown_face_candidates, etc.)
     from backend.app.database.models import Base
     Base.metadata.create_all(bind=engine)

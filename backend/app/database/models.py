@@ -203,11 +203,14 @@ class FaceRecognitionDB(Base):
     camera_id = Column(String, ForeignKey("cameras.camera_id"), nullable=False, index=True)
     track_id = Column(Integer, nullable=True)
     person_id = Column(String, nullable=True, index=True) # None if UNKNOWN
+    candidate_id = Column(String, nullable=True, index=True) # UNKNOWN-UXXXX if unknown candidate
     person_name = Column(String, default="Unknown Person")
     person_rank = Column(String, nullable=True)
     category = Column(String, default="UNKNOWN")
     confidence = Column(Float, default=0.0)
-    status = Column(String, default="UNKNOWN") # MATCH, UNKNOWN, UNCERTAIN
+    status = Column(String, default="UNKNOWN") # MATCH, UNKNOWN, UNCERTAIN, UNKNOWN_PREVIOUSLY_SEEN, UNKNOWN_NEW
+    situation = Column(String, default="SAFE") # SAFE, ATTENTION, UNSAFE
+    situation_reason = Column(Text, nullable=True)
     snapshot_path = Column(String, nullable=True)
     bbox_json = Column(Text, default="[0,0,0,0]") # [x1, y1, x2, y2]
     sha256_hash = Column(String, nullable=True)
@@ -215,4 +218,70 @@ class FaceRecognitionDB(Base):
     timestamp = Column(Float, nullable=False, index=True)
     is_demo = Column(Boolean, default=False)
     data_mode = Column(String, default="LIVE") # LIVE, DEMO, VALIDATION
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class UnknownFaceCandidateDB(Base):
+    __tablename__ = "unknown_face_candidates"
+
+    candidate_id = Column(String, primary_key=True, index=True) # e.g. UNKNOWN-U0001 or DEMO-U0001
+    first_seen = Column(Float, nullable=False, index=True)
+    last_seen = Column(Float, nullable=False, index=True)
+    first_camera_id = Column(String, nullable=True)
+    last_camera_id = Column(String, nullable=True, index=True)
+    sighting_count = Column(Integer, default=1)
+    best_snapshot_path = Column(String, nullable=True) # Relative path to best quality face crop
+    best_snapshot_hash = Column(String, nullable=True) # SHA-256 seal
+    best_quality_score = Column(Float, default=0.0) # 0.0 - 100.0
+    best_quality_metrics = Column(Text, nullable=True) # JSON with sharpness, brightness, resolution, pose
+    embeddings_enc = Column(Text, nullable=False) # Fernet-encrypted JSON of 128-D vector
+    status = Column(String, default="ACTIVE", index=True) # ACTIVE, PROMOTED, ARCHIVED, EXPIRED
+    promoted_to_person_id = Column(String, nullable=True) # e.g. PER-XXXX if promoted
+    promoted_at = Column(DateTime, nullable=True)
+    retention_until = Column(DateTime, nullable=True) # Auto-expiry retention
+    notes = Column(Text, nullable=True)
+    is_demo = Column(Boolean, default=False, index=True)
+    data_mode = Column(String, default="LIVE") # LIVE, DEMO, VALIDATION
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+class UnknownFaceSightingDB(Base):
+    __tablename__ = "unknown_face_sightings"
+
+    sighting_id = Column(String, primary_key=True, index=True)
+    candidate_id = Column(String, ForeignKey("unknown_face_candidates.candidate_id"), nullable=False, index=True)
+    camera_id = Column(String, ForeignKey("cameras.camera_id"), nullable=False, index=True)
+    track_id = Column(Integer, nullable=True)
+    timestamp = Column(Float, nullable=False, index=True)
+    similarity_score = Column(Float, default=0.0)
+    snapshot_path = Column(String, nullable=True)
+    sha256_hash = Column(String, nullable=True)
+    bbox_json = Column(Text, default="[0,0,0,0]")
+    quality_score = Column(Float, default=0.0)
+    quality_metrics = Column(Text, nullable=True) # JSON
+    situation = Column(String, default="SAFE") # SAFE, ATTENTION, UNSAFE
+    situation_reason = Column(Text, nullable=True)
+    event_id = Column(String, nullable=True)
+    is_demo = Column(Boolean, default=False)
+    data_mode = Column(String, default="LIVE")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class FaceRecognitionSessionDB(Base):
+    __tablename__ = "face_recognition_sessions"
+
+    session_id = Column(String, primary_key=True, index=True)
+    camera_id = Column(String, ForeignKey("cameras.camera_id"), nullable=False, index=True)
+    track_id = Column(Integer, nullable=True)
+    identity_type = Column(String, default="UNKNOWN") # KNOWN, UNKNOWN_NEW, UNKNOWN_PREVIOUSLY_SEEN, UNCERTAIN
+    entity_id = Column(String, nullable=True, index=True) # person_id or candidate_id
+    entity_name = Column(String, default="Unknown Subject")
+    first_seen = Column(Float, nullable=False)
+    last_seen = Column(Float, nullable=False)
+    duration = Column(Float, default=0.0)
+    sighting_count = Column(Integer, default=1)
+    best_face_snapshot = Column(String, nullable=True)
+    best_quality_score = Column(Float, default=0.0)
+    situation_state = Column(String, default="SAFE") # SAFE, ATTENTION, UNSAFE
+    is_active = Column(Boolean, default=True, index=True)
+    is_demo = Column(Boolean, default=False)
+    data_mode = Column(String, default="LIVE")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

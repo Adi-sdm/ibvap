@@ -138,6 +138,10 @@ class FrameAnnotator:
                     color = (30, 30, 240) # Red Watchlist
                 elif frs and frs.get("status") == "MATCH":
                     color = (50, 205, 50) # Lime Green Verified Match
+                elif frs and (frs.get("status") == "UNKNOWN_PREVIOUSLY_SEEN" or frs.get("identity_state") == "UNKNOWN_PREVIOUSLY_SEEN"):
+                    color = (220, 180, 50) # Cyan / Light Slate Previously Seen Unknown
+                elif frs and (frs.get("status") == "UNKNOWN" or frs.get("identity_state") == "UNKNOWN_NEW"):
+                    color = (180, 160, 120) # Slate Neutral Unknown
                 elif frs and frs.get("status") == "UNCERTAIN":
                     color = (30, 140, 240) # Amber Uncertain
                 elif cls_name == "person":
@@ -175,6 +179,13 @@ class FrameAnnotator:
                 elif frs and frs.get("status") == "MATCH":
                     match_conf = int(frs.get("confidence", 0.0) * 100)
                     parts.append(f"[MATCH] {frs.get('name', 'VERIFIED')} ({match_conf}%)")
+                elif frs and (frs.get("status") == "UNKNOWN_PREVIOUSLY_SEEN" or frs.get("identity_state") == "UNKNOWN_PREVIOUSLY_SEEN"):
+                    cand_id = frs.get("candidate_id", "UNKNOWN")
+                    seen_conf = int(frs.get("confidence", 0.0) * 100)
+                    parts.append(f"[SEEN UNKNOWN] {cand_id} ({seen_conf}%)")
+                elif frs and (frs.get("status") == "UNKNOWN" or frs.get("identity_state") == "UNKNOWN_NEW"):
+                    cand_id = frs.get("candidate_id") or f"#{tid}"
+                    parts.append(f"[NEW UNKNOWN] {cand_id}")
                 elif frs and frs.get("status") == "UNCERTAIN":
                     parts.append("[RECOGNITION UNCERTAIN]")
                 else:
@@ -184,6 +195,10 @@ class FrameAnnotator:
                         parts.append(cls_name.upper())
                     if config.get("confidence", True):
                         parts.append(f"{int(conf * 100)}%")
+
+                # Situational Safety Tag
+                if frs and frs.get("situation"):
+                    parts.append(f"[{frs['situation']}]")
 
                 if beh and beh not in ["Normal", "Walking"]:
                     parts.append(f"[{beh.upper()}]")

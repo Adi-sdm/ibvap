@@ -19,7 +19,8 @@ from backend.app.database.session import get_db, engine, DB_FILE
 from backend.app.database.models import (
     CameraDB, VirtualZoneDB, EventDB, EvidenceDB, ANPRDB, AuditLogDB,
     SystemConfigDB, OperationalSectorDB, AuthorizedVehicleDB, AuthorizedPersonDB,
-    FaceGalleryDB, FaceRecognitionDB
+    FaceGalleryDB, FaceRecognitionDB,
+    UnknownFaceCandidateDB, UnknownFaceSightingDB, FaceRecognitionSessionDB
 )
 from backend.app.models.schemas import (
     CameraCreate, CameraOut, CameraConfigUpdate, VirtualZoneCreate, VirtualZoneOut, 
@@ -1831,6 +1832,42 @@ class FRSPersonOut(BaseModel):
     is_demo: bool = False
     created_at: Optional[str] = None
 
+class FRSUnknownCandidateOut(BaseModel):
+    candidate_id: str
+    first_seen: float
+    last_seen: float
+    first_camera_id: Optional[str] = None
+    last_camera_id: Optional[str] = None
+    sighting_count: int = 1
+    best_snapshot_path: Optional[str] = None
+    best_snapshot_hash: Optional[str] = None
+    best_quality_score: float = 0.0
+    best_quality_metrics: Optional[Dict[str, Any]] = None
+    status: str = "ACTIVE"
+    promoted_to_person_id: Optional[str] = None
+    promoted_at: Optional[str] = None
+    retention_until: Optional[str] = None
+    notes: Optional[str] = None
+    is_demo: bool = False
+    data_mode: str = "LIVE"
+    created_at: Optional[str] = None
+
+class FRSPromoteCandidateIn(BaseModel):
+    name: str
+    rank: str = "Staff"
+    designation: str = "Personnel"
+    organization: str = "Border Security Force"
+    category: str = "OPERATIONAL"
+    status: str = "ACTIVE"
+    operator: str = "Supervisor"
+    notes: str = ""
+
+@router.get("/frs/capabilities")
+def get_ai_capabilities():
+    """Returns real-time truthful diagnostic matrix for all 13 AI vision and intelligence capabilities."""
+    from backend.app.services.frs_service import frs_subsystem
+    return frs_subsystem.get_capabilities()
+
 @router.get("/frs/status")
 def get_frs_status():
     """Returns real-time diagnostic status of YuNet detector, SFace recognizer, gallery, and latency."""
@@ -2067,12 +2104,164 @@ def export_person_record(
         "sightings_history": sighting_list
     }
 
+@router.get("/frs/unknown-candidates")
+def get_unknown_candidates(
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    data_mode: str = "LIVE",
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db)
+):
+    """List anonymous unknown candidates with sighting metrics and best face crop."""
+    query = db.query(UnknownFaceCandidateDB)
+    if data_mode == "LIVE":
+        query = query.filter(UnknownFaceCandidateDB.is_demo == False)
+    elif data_mode == "DEMO":
+        query = query.filter(UnknownFaceCandidateDB.is_demo == True)
+
+    if status and status.upper() != "ALL":
+        query = query.filter(UnknownFaceCandidateDB.status == status.upper())
+    else:
+        query = query.filter(UnknownFaceCandidateDB.status.in_(["ACTIVE", "PROMOTED"]))
+
+    if search:
+        s = f"%{search.strip()}%"
+        query = query.filter(
+            (UnknownFaceCandidateDB.candidate_id.ilike(s)) |
+            (UnknownFaceCandidateDB.last_camera_id.ilike(s)) |
+            (UnknownFaceCandidateDB.notes.ilike(s))
+        )
+
+    total = query.count()
+    records = query.order_by(UnknownFaceCandidateDB.last_seen.desc()).offset(offset).limit(limit).all()
+
+    items = []
+    for r in records:
+        metrics = {}
+        try:
+            metrics = json.loads(r.best_quality_metrics or "{}")
+        except Exception:
+            pass
+        items.append({
+            "candidate_id": r.candidate_id,
+            "first_seen": r.first_seen,
+            "last_seen": r.last_seen,
+            "first_camera_id": r.first_camera_id,
+            "last_camera_id": r.last_camera_id,
+            "sighting_count": r.sighting_count,
+            "best_snapshot_path": r.best_snapshot_path,
+            "best_snapshot_hash": r.best_snapshot_hash,
+            "best_quality_score": r.best_quality_score,
+            "best_quality_metrics": metrics,
+            "status": r.status,
+            "promoted_to_person_id": r.promoted_to_person_id,
+            "promoted_at": r.promoted_at.isoformat() if r.promoted_at else None,
+            "retention_until": r.retention_until.isoformat() if r.retention_until else None,
+            "notes": r.notes,
+            "is_demo": bool(r.is_demo),
+            "data_mode": r.data_mode,
+            "created_at": r.created_at.isoformat() if r.created_at else None
+        })
+    return {"total": total, "items": items, "limit": limit, "offset": offset}
+
+@router.get("/frs/unknown-candidates/{candidate_id}")
+def get_unknown_candidate_dossier(candidate_id: str, db: Session = Depends(get_db)):
+    """Fetches detailed profile, best face image, and cross-camera sightings for an unknown candidate."""
+    cand = db.query(UnknownFaceCandidateDB).filter(
+        UnknownFaceCandidateDB.candidate_id == candidate_id
+    ).first()
+    if not cand:
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+
+    sightings = db.query(UnknownFaceSightingDB).filter(
+        UnknownFaceSightingDB.candidate_id == candidate_id
+    ).order_by(UnknownFaceSightingDB.timestamp.desc()).limit(100).all()
+
+    sightings_data = [{
+        "sighting_id": s.sighting_id,
+        "camera_id": s.camera_id,
+        "track_id": s.track_id,
+        "timestamp": s.timestamp,
+        "similarity_score": s.similarity_score,
+        "snapshot_path": s.snapshot_path,
+        "sha256_hash": s.sha256_hash,
+        "quality_score": s.quality_score,
+        "situation": s.situation,
+        "situation_reason": s.situation_reason
+    } for s in sightings]
+
+    metrics = {}
+    try:
+        metrics = json.loads(cand.best_quality_metrics or "{}")
+    except Exception:
+        pass
+
+    return {
+        "candidate": {
+            "candidate_id": cand.candidate_id,
+            "first_seen": cand.first_seen,
+            "last_seen": cand.last_seen,
+            "first_camera_id": cand.first_camera_id,
+            "last_camera_id": cand.last_camera_id,
+            "sighting_count": cand.sighting_count,
+            "best_snapshot_path": cand.best_snapshot_path,
+            "best_snapshot_hash": cand.best_snapshot_hash,
+            "best_quality_score": cand.best_quality_score,
+            "best_quality_metrics": metrics,
+            "status": cand.status,
+            "promoted_to_person_id": cand.promoted_to_person_id,
+            "promoted_at": cand.promoted_at.isoformat() if cand.promoted_at else None,
+            "retention_until": cand.retention_until.isoformat() if cand.retention_until else None,
+            "notes": cand.notes,
+            "is_demo": bool(cand.is_demo),
+            "data_mode": cand.data_mode,
+            "created_at": cand.created_at.isoformat() if cand.created_at else None
+        },
+        "sightings": sightings_data
+    }
+
+@router.post("/frs/unknown-candidates/{candidate_id}/promote")
+def promote_candidate_endpoint(
+    candidate_id: str,
+    body: FRSPromoteCandidateIn
+):
+    """Promotes an anonymous unknown candidate into an enrolled identity with audit logging."""
+    from backend.app.services.frs_service import frs_subsystem
+    res = frs_subsystem.promote_unknown_candidate(
+        candidate_id=candidate_id,
+        name=body.name,
+        rank=body.rank,
+        designation=body.designation,
+        organization=body.organization,
+        category=body.category,
+        status=body.status,
+        operator=body.operator,
+        notes=body.notes
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Promotion failed."))
+    return res
+
+@router.delete("/frs/unknown-candidates/{candidate_id}")
+def delete_unknown_candidate_endpoint(
+    candidate_id: str,
+    operator: str = Query("Administrator")
+):
+    """Deletes anonymous unknown candidate, biometric template, and sighting crops with audit logging."""
+    from backend.app.services.frs_service import frs_subsystem
+    res = frs_subsystem.delete_unknown_candidate(candidate_id, operator=operator)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Deletion failed."))
+    return res
+
 @router.get("/frs/recognitions")
 def get_recognition_history(
     camera_id: Optional[str] = None,
     status: Optional[str] = None,
     category: Optional[str] = None,
     person_id: Optional[str] = None,
+    candidate_id: Optional[str] = None,
     data_mode: str = "LIVE",
     limit: int = 50,
     offset: int = 0,
@@ -2093,6 +2282,8 @@ def get_recognition_history(
         query = query.filter(FaceRecognitionDB.category == category.upper())
     if person_id:
         query = query.filter(FaceRecognitionDB.person_id == person_id)
+    if candidate_id:
+        query = query.filter(FaceRecognitionDB.candidate_id == candidate_id)
 
     total = query.count()
     records = query.order_by(FaceRecognitionDB.timestamp.desc()).offset(offset).limit(limit).all()
@@ -2109,11 +2300,14 @@ def get_recognition_history(
             "camera_id": r.camera_id,
             "track_id": r.track_id,
             "person_id": r.person_id,
+            "candidate_id": r.candidate_id,
             "person_name": r.person_name,
             "person_rank": r.person_rank,
             "category": r.category,
             "confidence": r.confidence,
             "status": r.status,
+            "situation": r.situation or "SAFE",
+            "situation_reason": r.situation_reason,
             "snapshot_path": r.snapshot_path,
             "bbox": bbox,
             "sha256_hash": r.sha256_hash,
@@ -2126,9 +2320,9 @@ def get_recognition_history(
 
 @router.get("/frs/timeline/{person_id}")
 def get_person_timeline(person_id: str, db: Session = Depends(get_db)):
-    """Computes full cross-camera movement journey and timeline for a person."""
+    """Computes full cross-camera movement journey and timeline for a person or candidate."""
     recs = db.query(FaceRecognitionDB).filter(
-        FaceRecognitionDB.person_id == person_id
+        (FaceRecognitionDB.person_id == person_id) | (FaceRecognitionDB.candidate_id == person_id)
     ).order_by(FaceRecognitionDB.timestamp.asc()).all()
 
     if not recs:
@@ -2136,6 +2330,55 @@ def get_person_timeline(person_id: str, db: Session = Depends(get_db)):
             recs = db.query(FaceRecognitionDB).filter(
                 FaceRecognitionDB.track_id == int(person_id)
             ).order_by(FaceRecognitionDB.timestamp.asc()).all()
+
+    # Check UnknownFaceSightingDB fallback
+    if not recs:
+        sgts = db.query(UnknownFaceSightingDB).filter(
+            UnknownFaceSightingDB.candidate_id == person_id
+        ).order_by(UnknownFaceSightingDB.timestamp.asc()).all()
+        if sgts:
+            cams_visited = []
+            journey = []
+            prev_cam = None
+            for s in sgts:
+                if s.camera_id not in cams_visited:
+                    cams_visited.append(s.camera_id)
+                if s.camera_id != prev_cam:
+                    journey.append({
+                        "camera_id": s.camera_id,
+                        "timestamp": s.timestamp,
+                        "confidence": s.similarity_score,
+                        "snapshot_path": s.snapshot_path
+                    })
+                    prev_cam = s.camera_id
+
+            timeline = [{
+                "recognition_id": s.sighting_id,
+                "camera_id": s.camera_id,
+                "track_id": s.track_id,
+                "timestamp": s.timestamp,
+                "confidence": s.similarity_score,
+                "status": "UNKNOWN_SIGHTING",
+                "situation": s.situation,
+                "situation_reason": s.situation_reason,
+                "snapshot_path": s.snapshot_path,
+                "sha256_hash": s.sha256_hash
+            } for s in sgts]
+
+            first_seen = sgts[0].timestamp
+            last_seen = sgts[-1].timestamp
+            return {
+                "person_id": person_id,
+                "person_name": f"Anonymous Candidate {person_id}",
+                "person_rank": "Unknown",
+                "total_sightings": len(sgts),
+                "unique_cameras": cams_visited,
+                "first_seen": first_seen,
+                "last_seen": last_seen,
+                "duration_seconds": round(last_seen - first_seen, 1),
+                "journey": journey,
+                "timeline": timeline
+            }
 
     if not recs:
         return {
@@ -2169,6 +2412,8 @@ def get_person_timeline(person_id: str, db: Session = Depends(get_db)):
         "timestamp": r.timestamp,
         "confidence": r.confidence,
         "status": r.status,
+        "situation": r.situation or "SAFE",
+        "situation_reason": r.situation_reason,
         "snapshot_path": r.snapshot_path,
         "sha256_hash": r.sha256_hash
     } for r in recs]
