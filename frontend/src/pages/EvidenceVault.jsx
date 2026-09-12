@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { 
   Database, 
   Search, 
@@ -21,6 +22,19 @@ import {
 } from 'lucide-react';
 import { getEvidence, getCameras, getIncidentDossier } from '../services/api';
 import RiskBadge from '../components/RiskBadge';
+
+export function resolveMediaUrl(path, fallback = '') {
+  if (!path) return fallback;
+  let clean = String(path).replace(/\\/g, '/').trim();
+  clean = clean.replace(/^(https?:\/\/[^\/]+)\/\1/, '$1');
+  clean = clean.replace(/^(https?:\/\/[^\/]+)\/https?:\/\/[^\/]+/, '$1');
+  clean = clean.replace(/^https?:\/\/localhost:\d+/, '');
+  clean = clean.replace(/^https?:\/\/127\.0\.0\.1:\d+/, '');
+  if (!clean.startsWith('http://') && !clean.startsWith('https://') && !clean.startsWith('/')) {
+    clean = '/' + clean;
+  }
+  return clean;
+}
 
 export default function EvidenceVault({ onSelectIncident }) {
   const [evidenceList, setEvidenceList] = useState([]);
@@ -48,9 +62,17 @@ export default function EvidenceVault({ onSelectIncident }) {
     }
   };
 
+  const { evidenceId } = useParams();
+
   useEffect(() => {
     fetchData();
   }, [selectedCamera]);
+
+  useEffect(() => {
+    if (evidenceId) {
+      handleOpenDossier(evidenceId);
+    }
+  }, [evidenceId]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -164,10 +186,9 @@ export default function EvidenceVault({ onSelectIncident }) {
                 {evidenceList.map((item) => {
                   const eventId = item.event_id || item.id;
                   const snapPath = item.snapshot_path || item.snapshot_url;
-                  const snapUrl = snapPath 
-                    ? (snapPath.startsWith('/') || snapPath.startsWith('http') ? snapPath : `/${snapPath.replace(/\\/g, '/')}`)
-                    : `/evidence/${eventId}_snapshot.jpg`;
-                  const shaHash = item.sha256_hash || item.sha256 || 'Unsealed';
+                  const snapUrl = resolveMediaUrl(snapPath, `/evidence/${eventId}_snapshot.jpg`);
+                  const shaHash = item.sha256_hash || item.sha256 || '';
+                  const hasValidHash = shaHash && shaHash.length >= 32 && shaHash !== 'Unsealed';
 
                   return (
                     <tr key={eventId} className="hover:bg-slate-800/40 transition">
@@ -212,24 +233,32 @@ export default function EvidenceVault({ onSelectIncident }) {
                       {/* Cryptographic Hash */}
                       <td className="py-3 px-4">
                         <div className="flex items-center space-x-1.5">
-                          <span className="font-mono text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 max-w-[160px] truncate" title={shaHash}>
-                            {shaHash}
-                          </span>
-                          <button
-                            onClick={() => copyToClipboard(shaHash, eventId)}
-                            title="Copy Full SHA-256 Digest"
-                            className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition"
-                          >
-                            {copiedHash === eventId ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-400" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                            <ShieldCheck className="w-2.5 h-2.5 mr-0.5" />
-                            VERIFIED
-                          </span>
+                          {hasValidHash ? (
+                            <>
+                              <span className="font-mono text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 max-w-[160px] truncate" title={shaHash}>
+                                {shaHash}
+                              </span>
+                              <button
+                                onClick={() => copyToClipboard(shaHash, eventId)}
+                                title="Copy Full SHA-256 Digest"
+                                className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition"
+                              >
+                                {copiedHash === eventId ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                <ShieldCheck className="w-2.5 h-2.5 mr-0.5" />
+                                SHA-256 VERIFIED
+                              </span>
+                            </>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                              HASH PENDING
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -304,7 +333,7 @@ export default function EvidenceVault({ onSelectIncident }) {
             {dossierModal.evidence?.snapshot_path && (
               <div className="aspect-video bg-black rounded-lg overflow-hidden border border-slate-800 relative flex items-center justify-center">
                 <img
-                  src={dossierModal.evidence.snapshot_path.startsWith('/') ? dossierModal.evidence.snapshot_path : `/${dossierModal.evidence.snapshot_path.replace(/\\/g, '/')}`}
+                  src={resolveMediaUrl(dossierModal.evidence.snapshot_path)}
                   alt="Incident Snapshot"
                   className="w-full h-full object-contain"
                 />

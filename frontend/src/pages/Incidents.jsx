@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { 
   ShieldAlert, 
   Search, 
@@ -25,7 +26,7 @@ import {
 } from 'lucide-react';
 import RiskBadge from '../components/RiskBadge';
 import GeminiAnalysisCard from '../components/GeminiAnalysisCard';
-import { getEvents, updateEventStatus, updateEventFeedback } from '../services/api';
+import { getEvents, getEvent, updateEventStatus, updateEventFeedback } from '../services/api';
 
 export default function Incidents({ onSelectIncident }) {
   const [incidents, setIncidents] = useState([]);
@@ -59,6 +60,26 @@ export default function Incidents({ onSelectIncident }) {
       const items = res.items || [];
       setIncidents(items);
       setTotal(res.total || 0);
+
+      if (incidentId) {
+        const found = items.find(i => String(i.event_id) === String(incidentId) || String(i.id) === String(incidentId));
+        if (found) {
+          setSelectedIncident(found);
+          setOperatorNotes(found.notes || '');
+          return;
+        } else {
+          // Attempt direct fetch
+          try {
+            const single = await getEvent(incidentId);
+            if (single) {
+              setSelectedIncident(single);
+              setOperatorNotes(single.notes || '');
+              return;
+            }
+          } catch (_) {}
+        }
+      }
+
       if ((selectFirst || !selectedIncident) && items.length > 0) {
         setSelectedIncident(items[0]);
         setOperatorNotes(items[0].notes || '');
@@ -73,9 +94,11 @@ export default function Incidents({ onSelectIncident }) {
     }
   };
 
+  const { incidentId } = useParams();
+
   useEffect(() => {
     loadData(true);
-  }, [page, activeTab]);
+  }, [page, activeTab, incidentId]);
 
   const filtered = incidents.filter(i => {
     if (filterSeverity !== 'ALL' && i.severity !== filterSeverity) return false;

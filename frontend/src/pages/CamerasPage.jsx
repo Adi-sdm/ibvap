@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { 
   Camera, 
   Plus, 
@@ -73,15 +74,26 @@ export default function CamerasPage({ cameras = [], onRefresh }) {
     getProfiles().then(p => setProfilesCatalog(p || [])).catch(() => {});
   }, []);
 
-  // Auto-select first camera if none selected
+  const { cameraId } = useParams();
+
+  // Auto-select camera: deep-linked cameraId first, otherwise fallback or maintain selection
   useEffect(() => {
-    if (cameras.length > 0 && !selectedCam) {
-      setSelectedCam(cameras[0]);
-    } else if (selectedCam) {
-      const found = cameras.find(c => c.camera_id === selectedCam.camera_id);
-      if (found) setSelectedCam(found);
+    if (cameras.length > 0) {
+      if (cameraId) {
+        const found = cameras.find(c => c.camera_id === cameraId || c.id === cameraId);
+        if (found) {
+          setSelectedCam(found);
+          return;
+        }
+      }
+      if (!selectedCam) {
+        setSelectedCam(cameras[0]);
+      } else {
+        const found = cameras.find(c => c.camera_id === selectedCam.camera_id);
+        if (found) setSelectedCam(found);
+      }
     }
-  }, [cameras]);
+  }, [cameras, cameraId]);
 
   // Sync edit state when selected camera changes
   useEffect(() => {

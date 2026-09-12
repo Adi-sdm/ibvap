@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import CommandCenter from './pages/CommandCenter';
@@ -16,7 +17,9 @@ import { getCameras, getSystemMode, getSystemStats, connectWebSocket, getEvents,
 import { ShieldAlert, Sparkles, CheckCircle2 } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('command_center');
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [cameras, setCameras] = useState([]);
   const [incidents, setIncidents] = useState([]);
   const [systemMode, setSystemMode] = useState('live');
@@ -26,6 +29,20 @@ export default function App() {
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [showAddWizard, setShowAddWizard] = useState(false);
   const [initializing, setInitializing] = useState(false);
+
+  const getActiveTab = (pathname) => {
+    if (pathname.startsWith('/cameras')) return 'cameras';
+    if (pathname.startsWith('/incidents')) return 'incidents';
+    if (pathname.startsWith('/evidence')) return 'evidence_vault';
+    if (pathname.startsWith('/ai-analysis')) return 'ai_analysis';
+    if (pathname.startsWith('/vehicles')) return 'vehicle_intel';
+    if (pathname.startsWith('/gis')) return 'gis_map';
+    if (pathname.startsWith('/analytics')) return 'analytics';
+    if (pathname.startsWith('/settings')) return 'settings';
+    return 'command_center';
+  };
+
+  const activeTab = getActiveTab(location.pathname);
 
   const loadData = async () => {
     try {
@@ -77,7 +94,7 @@ export default function App() {
     return () => disconnect();
   }, []);
 
-  const unreadCount = incidents.filter(i => (i.status === 'NEW' || !i.status) && (i.severity === 'Critical' || i.severity === 'High')).length;
+  const unreadCount = stats.active_incidents ?? incidents.filter(i => (i.status === 'NEW' || !i.status) && (i.severity === 'Critical' || i.severity === 'High')).length;
 
   return (
     <div className="relative flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500 selection:text-black">
@@ -90,7 +107,20 @@ export default function App() {
       {/* Left Navigation Sidebar */}
       <Sidebar 
         activeTab={activeTab} 
-        onTabChange={setActiveTab} 
+        onTabChange={(tabId) => {
+          const tabToPath = {
+            command_center: '/command-center',
+            cameras: '/cameras',
+            incidents: '/incidents',
+            evidence_vault: '/evidence',
+            ai_analysis: '/ai-analysis',
+            vehicle_intel: '/vehicles',
+            gis_map: '/gis',
+            analytics: '/analytics',
+            settings: '/settings'
+          };
+          if (tabToPath[tabId]) navigate(tabToPath[tabId]);
+        }} 
         wsConnected={wsConnected} 
         systemMode={systemMode} 
         unreadCount={unreadCount} 
@@ -145,65 +175,69 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <>
-          {activeTab === 'command_center' && (
-            <CommandCenter 
-              stats={stats} 
-              cameras={cameras} 
-              incidents={incidents} 
-              onSelectIncident={setSelectedIncident} 
-            />
+            <Routes>
+              <Route path="/" element={<Navigate to="/command-center" replace />} />
+              <Route path="/command-center" element={
+                <CommandCenter 
+                  stats={stats} 
+                  cameras={cameras} 
+                  incidents={incidents} 
+                  onSelectIncident={setSelectedIncident} 
+                />
+              } />
+              <Route path="/cameras" element={
+                <CamerasPage 
+                  cameras={cameras} 
+                  onRefresh={loadData} 
+                />
+              } />
+              <Route path="/cameras/:cameraId" element={
+                <CamerasPage 
+                  cameras={cameras} 
+                  onRefresh={loadData} 
+                />
+              } />
+              <Route path="/incidents" element={
+                <Incidents 
+                  onSelectIncident={setSelectedIncident} 
+                />
+              } />
+              <Route path="/incidents/:incidentId" element={
+                <Incidents 
+                  onSelectIncident={setSelectedIncident} 
+                />
+              } />
+              <Route path="/evidence" element={
+                <EvidenceVault 
+                  onSelectIncident={setSelectedIncident} 
+                />
+              } />
+              <Route path="/evidence/:evidenceId" element={
+                <EvidenceVault 
+                  onSelectIncident={setSelectedIncident} 
+                />
+              } />
+              <Route path="/ai-analysis" element={<AIAnalysis />} />
+              <Route path="/vehicles" element={<VehicleIntel />} />
+              <Route path="/gis" element={
+                <GISMap 
+                  cameras={cameras} 
+                  incidents={incidents} 
+                  onNavigateToCameras={(camId) => {
+                    navigate(camId ? `/cameras/${camId}` : '/cameras');
+                  }} 
+                />
+              } />
+              <Route path="/analytics" element={<Analytics />} />
+              <Route path="/settings/*" element={
+                <SettingsPage 
+                  systemMode={systemMode} 
+                  onRefresh={loadData} 
+                />
+              } />
+              <Route path="*" element={<Navigate to="/command-center" replace />} />
+            </Routes>
           )}
-
-          {activeTab === 'cameras' && (
-            <CamerasPage 
-              cameras={cameras} 
-              onRefresh={loadData} 
-            />
-          )}
-
-          {activeTab === 'incidents' && (
-            <Incidents 
-              onSelectIncident={setSelectedIncident} 
-            />
-          )}
-
-          {activeTab === 'evidence_vault' && (
-            <EvidenceVault 
-              onSelectIncident={setSelectedIncident} 
-            />
-          )}
-
-          {activeTab === 'ai_analysis' && (
-            <AIAnalysis />
-          )}
-
-          {activeTab === 'vehicle_intel' && (
-            <VehicleIntel />
-          )}
-
-          {activeTab === 'gis_map' && (
-            <GISMap 
-              cameras={cameras} 
-              incidents={incidents} 
-              onNavigateToCameras={(camId) => {
-                setActiveTab('cameras');
-              }}
-            />
-          )}
-
-          {activeTab === 'analytics' && (
-            <Analytics />
-          )}
-
-          {activeTab === 'settings' && (
-            <SettingsPage 
-              systemMode={systemMode} 
-              onRefresh={loadData} 
-            />
-          )}
-          </>
-        )}
         </main>
       </div>
 

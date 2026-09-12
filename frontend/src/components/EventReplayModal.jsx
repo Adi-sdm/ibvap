@@ -32,15 +32,24 @@ export default function EventReplayModal({ event, onClose, onAcknowledge }) {
     return "STANDARD DIRECTIVE: Maintain visual contact. Log sector status.";
   };
 
+  const resolveMediaUrl = (path, fallback = '') => {
+    if (!path) return fallback;
+    let clean = String(path).replace(/\\/g, '/').trim();
+    clean = clean.replace(/^(https?:\/\/[^\/]+)\/\1/, '$1');
+    clean = clean.replace(/^(https?:\/\/[^\/]+)\/https?:\/\/[^\/]+/, '$1');
+    clean = clean.replace(/^https?:\/\/localhost:\d+/, '');
+    clean = clean.replace(/^https?:\/\/127\.0\.0\.1:\d+/, '');
+    if (!clean.startsWith('http://') && !clean.startsWith('https://') && !clean.startsWith('/')) {
+      clean = '/' + clean;
+    }
+    return clean;
+  };
+
   const snapshotPath = currentEvent.evidence_snapshot || currentEvent.snapshot_path;
-  const snapshotSrc = snapshotPath 
-    ? (snapshotPath.startsWith('/') || snapshotPath.startsWith('http') ? snapshotPath : `/${snapshotPath.replace(/\\/g, '/')}`)
-    : `/evidence/${currentEvent.event_id}_snapshot.jpg`;
+  const snapshotSrc = resolveMediaUrl(snapshotPath, `/evidence/${currentEvent.event_id}_snapshot.jpg`);
 
   const clipPath = currentEvent.video_clip_path || currentEvent.evidence_clip;
-  const clipSrc = clipPath 
-    ? (clipPath.startsWith('/') || clipPath.startsWith('http') ? clipPath : `/${clipPath.replace(/\\/g, '/')}`)
-    : `/evidence/${currentEvent.event_id}_clip.mp4`;
+  const clipSrc = resolveMediaUrl(clipPath, `/evidence/${currentEvent.event_id}_clip.mp4`);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">

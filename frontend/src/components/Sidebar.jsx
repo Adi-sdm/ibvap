@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Camera, 
@@ -19,6 +20,8 @@ import {
 export default function Sidebar({ activeTab, onTabChange, wsConnected, systemMode, unreadCount = 0 }) {
   const [timeStr, setTimeStr] = useState('');
   const [utcStr, setUtcStr] = useState('');
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const updateTime = () => {
@@ -32,16 +35,29 @@ export default function Sidebar({ activeTab, onTabChange, wsConnected, systemMod
   }, []);
 
   const navItems = [
-    { id: 'command_center', label: 'Command Center', icon: LayoutDashboard, badge: null },
-    { id: 'cameras', label: 'Cameras', icon: Camera, badge: null },
-    { id: 'incidents', label: 'Incidents', icon: ShieldAlert, badge: unreadCount > 0 ? unreadCount : null },
-    { id: 'evidence_vault', label: 'Evidence Vault', icon: Database, badge: null },
-    { id: 'ai_analysis', label: 'AI Analysis', icon: Cpu, badge: null },
-    { id: 'vehicle_intel', label: 'Vehicle Intel & ANPR', icon: Car, badge: null },
-    { id: 'gis_map', label: 'Tactical GIS Map', icon: Map, badge: null },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3, badge: null },
-    { id: 'settings', label: 'Settings', icon: Settings, badge: null },
+    { id: 'command_center', path: '/command-center', label: 'Command Center', icon: LayoutDashboard, badge: null },
+    { id: 'cameras', path: '/cameras', label: 'Cameras', icon: Camera, badge: null },
+    { id: 'incidents', path: '/incidents', label: 'Incidents', icon: ShieldAlert, badge: unreadCount > 0 ? unreadCount : null },
+    { id: 'evidence_vault', path: '/evidence', label: 'Evidence Vault', icon: Database, badge: null },
+    { id: 'ai_analysis', path: '/ai-analysis', label: 'AI Analysis', icon: Cpu, badge: null },
+    { id: 'vehicle_intel', path: '/vehicles', label: 'Vehicle Intel & ANPR', icon: Car, badge: null },
+    { id: 'gis_map', path: '/gis', label: 'Tactical GIS Map', icon: Map, badge: null },
+    { id: 'analytics', path: '/analytics', label: 'Analytics', icon: BarChart3, badge: null },
+    { id: 'settings', path: '/settings', label: 'Settings', icon: Settings, badge: null },
   ];
+
+  const isItemActive = (item) => {
+    const p = location.pathname;
+    if (item.path === '/command-center' && (p === '/' || p === '/command-center')) return true;
+    if (item.path !== '/command-center' && p.startsWith(item.path)) return true;
+    if (activeTab === item.id) return true;
+    return false;
+  };
+
+  const handleNav = (item) => {
+    navigate(item.path);
+    if (onTabChange) onTabChange(item.id);
+  };
 
   return (
     <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between shrink-0 select-none z-30">
@@ -87,11 +103,11 @@ export default function Sidebar({ activeTab, onTabChange, wsConnected, systemMod
         <nav className="p-3 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = activeTab === item.id;
+            const isActive = isItemActive(item);
             return (
               <button
                 key={item.id}
-                onClick={() => onTabChange(item.id)}
+                onClick={() => handleNav(item)}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-md text-xs font-medium transition-all duration-150 ${
                   isActive 
                     ? 'bg-slate-800 text-white font-semibold shadow-sm border border-slate-700/60' 
