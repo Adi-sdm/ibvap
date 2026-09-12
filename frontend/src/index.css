@@ -180,20 +180,23 @@ video, img, canvas, .aspect-video, .stream-viewport, .leaflet-container {
   color: #0f172a !important;
 }
 
-[data-theme="light"] .bg-slate-900 {
+[data-theme="light"] .bg-slate-900,
+[data-theme="light"] [class*="bg-slate-900/"] {
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
   color: #0f172a !important;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
 }
 
-[data-theme="light"] .bg-slate-950 {
+[data-theme="light"] .bg-slate-950,
+[data-theme="light"] [class*="bg-slate-950/"] {
   background-color: #f8fafc !important;
   border-color: #e2e8f0 !important;
   color: #0f172a !important;
 }
 
-[data-theme="light"] .bg-slate-800 {
+[data-theme="light"] .bg-slate-800,
+[data-theme="light"] [class*="bg-slate-800/"] {
   background-color: #f1f5f9 !important;
   border-color: #cbd5e1 !important;
   color: #1e293b !important;
