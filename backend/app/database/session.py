@@ -82,6 +82,7 @@ def run_safe_migrations():
             event_columns_to_add = [
                 ("gemini_analysis", "TEXT"),
                 ("gemini_status", "TEXT DEFAULT 'NONE'"),
+                ("data_mode", "TEXT DEFAULT 'LIVE'"),
             ]
             for col_name, col_def in event_columns_to_add:
                 if col_name not in existing_event_cols:
@@ -90,3 +91,36 @@ def run_safe_migrations():
             conn.commit()
         except Exception as e:
             print(f"[Database Migration] Error migrating events: {e}")
+
+        # 3. Evidence table columns
+        try:
+            result = conn.execute(text("PRAGMA table_info(evidence)"))
+            existing_evi_cols = {row[1] for row in result.fetchall()}
+            
+            evi_columns_to_add = [
+                ("evidence_type", "TEXT DEFAULT 'KEYFRAME'"),
+                ("state", "TEXT DEFAULT 'SEALED'"),
+                ("data_mode", "TEXT DEFAULT 'LIVE'"),
+            ]
+            for col_name, col_def in evi_columns_to_add:
+                if col_name not in existing_evi_cols:
+                    conn.execute(text(f"ALTER TABLE evidence ADD COLUMN {col_name} {col_def}"))
+                    print(f"[Database Migration] Added evidence.{col_name}")
+            conn.commit()
+        except Exception as e:
+            print(f"[Database Migration] Error migrating evidence: {e}")
+
+        # 4. ANPR table columns
+        try:
+            result = conn.execute(text("PRAGMA table_info(anpr)"))
+            existing_anpr_cols = {row[1] for row in result.fetchall()}
+            if "data_mode" not in existing_anpr_cols:
+                conn.execute(text("ALTER TABLE anpr ADD COLUMN data_mode TEXT DEFAULT 'LIVE'"))
+                print("[Database Migration] Added anpr.data_mode")
+                conn.commit()
+        except Exception as e:
+            print(f"[Database Migration] Error migrating anpr: {e}")
+
+    # Ensure all tables exist (creates situation_assessments, validation_runs, etc.)
+    from backend.app.database.models import Base
+    Base.metadata.create_all(bind=engine)

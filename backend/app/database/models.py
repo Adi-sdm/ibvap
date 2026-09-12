@@ -66,6 +66,7 @@ class EventDB(Base):
     operator_feedback = Column(String, nullable=True)
     operator_notes = Column(Text, nullable=True)
     is_demo = Column(Boolean, default=False)
+    data_mode = Column(String, default="LIVE") # LIVE, DEMO, VALIDATION
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 class EvidenceDB(Base):
@@ -76,6 +77,9 @@ class EvidenceDB(Base):
     video_clip_path = Column(String, nullable=True)
     metadata_path = Column(String, nullable=True)
     sha256_hash = Column(String, nullable=False)
+    evidence_type = Column(String, default="KEYFRAME") # KEYFRAME, PRE-EVENT, POST-EVENT, ANPR_CROP, SNAPSHOT, VIDEO
+    state = Column(String, default="SEALED") # NOT_CAPTURED, CAPTURE_QUEUED, CAPTURED, HASHED, SEALED, FAILED
+    data_mode = Column(String, default="LIVE") # LIVE, DEMO, VALIDATION
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 class ANPRDB(Base):
@@ -90,6 +94,7 @@ class ANPRDB(Base):
     verification_required = Column(Boolean, default=False)
     snapshot_path = Column(String, nullable=True)
     is_demo = Column(Boolean, default=False)
+    data_mode = Column(String, default="LIVE") # LIVE, DEMO, VALIDATION
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 class AuditLogDB(Base):
@@ -140,4 +145,34 @@ class OperationalSectorDB(Base):
     boundary_coords = Column(Text, nullable=True) # JSON list of [lat, lng]
     priority = Column(String, default="NORMAL") # HIGH, NORMAL, LOW
     notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class SituationAssessmentDB(Base):
+    __tablename__ = "situation_assessments"
+
+    id = Column(String, primary_key=True, index=True)
+    timestamp = Column(Float, nullable=False)
+    scope = Column(String, default="CURRENT_SITUATION")
+    data_mode = Column(String, default="LIVE") # LIVE, DEMO, VALIDATION
+    included_cameras = Column(Text, default="[]") # JSON list of camera IDs
+    included_incidents = Column(Text, default="[]") # JSON list of incident IDs
+    evidence_count = Column(Integer, default=0)
+    model = Column(String, default="gemini-2.5-flash")
+    status = Column(String, default="COMPLETED") # COMPLETED, FAILED, RUNNING
+    result = Column(Text, nullable=True) # JSON structured assessment
+    confidence = Column(Float, default=0.85)
+    latency_ms = Column(Integer, default=0)
+    operator = Column(String, default="OP-01")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class ValidationRunDB(Base):
+    __tablename__ = "validation_runs"
+
+    id = Column(String, primary_key=True, index=True)
+    test_name = Column(String, nullable=False)
+    dataset_name = Column(String, default="STANDARD_PERIMETER_EVAL")
+    condition = Column(String, default="ALL") # DAY, NIGHT, LOW_LIGHT, OCCLUSION, DISTANCE
+    metrics = Column(Text, nullable=False) # JSON string: precision, recall, f1, fp, fn, fps, latency
+    data_mode = Column(String, default="VALIDATION")
+    timestamp = Column(Float, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
