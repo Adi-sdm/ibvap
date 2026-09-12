@@ -1,0 +1,59 @@
+{
+  "event_id": "8609f022-231d-41a9-a5d1-f303519f4e11",
+  "camera_id": "DEMO-40bb17e2",
+  "timestamp": 1789238731.6453483,
+  "sha256_hash": "375a7dbbabca99ef2c55525a26a1c57ec516f583533cb628e870df51554e454e",
+  "snapshot_file": "8609f022-231d-41a9-a5d1-f303519f4e11_snapshot.jpg",
+  "clip_file": "8609f022-231d-41a9-a5d1-f303519f4e11_clip.mp4",
+  "event_data": {
+    "camera_id": "DEMO-40bb17e2",
+    "track_id": 3,
+    "event_type": "INTRUSION_ENTRY",
+    "zone_id": "PERIMETER_DEMO-40b",
+    "zone_name": "Sector Demo Perimeter",
+    "zone_type": "RESTRICTED",
+    "class_name": "person",
+    "confidence": 0.6969159841537476,
+    "timestamp": 1789238731.5231125,
+    "bbox": [
+      573.8839721679688,
+      212.6910400390625,
+      620.0304565429688,
+      286.57049560546875
+    ],
+    "loitering_seconds": 0,
+    "risk_score": 90,
+    "severity": "Critical",
+    "explainability": [
+      "\u2713 Target identified as 'person' (+10 pts)",
+      "\u2713 Target entered Restricted Perimeter Zone (+35 pts)",
+      "\u2713 Physical boundary perimeter crossing detected (+30 pts)",
+      "\u2713 Low-light / nocturnal border condition detected (+15 pts)"
+    ],
+    "ai_summary": "Target activity detected in perimeter sector by person.",
+    "behaviour": "Walking",
+    "detected_objects": [
+      "person"
+    ],
+    "event_id": "8609f022-231d-41a9-a5d1-f303519f4e11",
+    "is_new": true,
+    "is_escalation": false,
+    "first_seen": 1789238731.5231125,
+    "last_update": 1789238731.5231125,
+    "timeline": [
+      {
+        "state": "DETECTED",
+        "time": 1789238731.0231125,
+        "detail": "Target track #3 acquired"
+      },
+      {
+        "state": "INTRUSION_ENTRY",
+        "time": 1789238731.5231125,
+        "detail": "Triggered INTRUSION_ENTRY in Sector Demo Perimeter"
+      }
+    ],
+    "timeline_json": "[{\"state\": \"DETECTED\", \"time\": 1789238731.0231125, \"detail\": \"Target track #3 acquired\"}, {\"state\": \"INTRUSION_ENTRY\", \"time\": 1789238731.5231125, \"detail\": \"Triggered INTRUSION_ENTRY in Sector Demo Perimeter\"}]",
+    "last_store_time": 1789238731.5231125,
+    "last_evidence_capture": 1789238731.5231125
+  }
+}
