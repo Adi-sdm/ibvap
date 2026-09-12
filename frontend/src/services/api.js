@@ -72,6 +72,9 @@ export const deleteZone = (id) => fetch(`${API_BASE}/zones/${id}`, { method: 'DE
 export const getGeminiStatus = () => fetch(`${API_BASE}/ai/gemini/status`).then(handleResponse);
 export const updateGeminiConfig = (config) => fetch(`${API_BASE}/ai/gemini/config`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(config) }).then(handleResponse);
 export const testGeminiConnection = (req = {}) => fetch(`${API_BASE}/ai/gemini/test`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(req) }).then(handleResponse);
+export const testGeminiMultimodal = (req = {}) => fetch(`${API_BASE}/ai/gemini/test-multimodal`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(req) }).then(handleResponse);
+export const getDiscoveredGeminiModels = () => fetch(`${API_BASE}/ai/gemini/models`).then(handleResponse);
+export const consultCameraLive = (cameraId) => fetch(`${API_BASE}/cameras/${cameraId}/consult-gemini`, { method: 'POST' }).then(handleResponse);
 export const toggleGemini = () => fetch(`${API_BASE}/ai/gemini/toggle`, { method: 'POST' }).then(handleResponse);
 export const clearGeminiCredentials = () => fetch(`${API_BASE}/ai/gemini/config`, { method: 'DELETE' }).then(handleResponse);
 
@@ -89,8 +92,31 @@ export const getSystemStats = (source = null) => {
   if (source) url += `?source=${encodeURIComponent(source)}`;
   return fetch(url).then(handleResponse);
 };
-export const startDemo = () => fetch(`${API_BASE}/demo/start`, { method: 'POST' }).then(handleResponse);
+export const startDemo = (scenarioType = "NORMAL", seed = 42, speed = 1.0) => 
+  fetch(`${API_BASE}/demo/start`, { 
+    method: 'POST', 
+    headers: {'Content-Type': 'application/json'}, 
+    body: JSON.stringify({ scenario_type: scenarioType, seed, speed }) 
+  }).then(handleResponse);
+
 export const stopDemo = () => fetch(`${API_BASE}/demo/stop`, { method: 'POST' }).then(handleResponse);
+export const pauseDemo = () => fetch(`${API_BASE}/demo/pause`, { method: 'POST' }).then(handleResponse);
+export const resumeDemo = () => fetch(`${API_BASE}/demo/resume`, { method: 'POST' }).then(handleResponse);
+export const stepDemo = () => fetch(`${API_BASE}/demo/step`, { method: 'POST' }).then(handleResponse);
+export const resetDemo = () => fetch(`${API_BASE}/demo/reset`, { method: 'POST' }).then(handleResponse);
+export const setDemoSpeed = (speed) => 
+  fetch(`${API_BASE}/demo/speed`, { 
+    method: 'POST', 
+    headers: {'Content-Type': 'application/json'}, 
+    body: JSON.stringify({ speed }) 
+  }).then(handleResponse);
+export const getDemoStatus = () => fetch(`${API_BASE}/demo/status`).then(handleResponse);
+export const generateDemoScenario = (prompt) => 
+  fetch(`${API_BASE}/demo/generate-scenario`, { 
+    method: 'POST', 
+    headers: {'Content-Type': 'application/json'}, 
+    body: JSON.stringify({ prompt }) 
+  }).then(handleResponse);
 
 // Evidence Vault & Forensic Dossier
 export const getEvidence = (cameraId = '', search = '', offset = 0, limit = 25) => {
@@ -155,4 +181,13 @@ export const deleteSector = (id) => fetch(`${API_BASE}/sectors/${encodeURICompon
 export const triggerSituationAssessment = () => fetch(`${API_BASE}/ai/situation-assessment`, { method: 'POST' }).then(handleResponse);
 export const getSituationAssessments = (limit = 10) => fetch(`${API_BASE}/ai/situation-assessments?limit=${limit}`).then(handleResponse);
 export const getSituationAssessment = (id) => fetch(`${API_BASE}/ai/situation-assessments/${encodeURIComponent(id)}`).then(handleResponse);
+
+// AI Truthful Model Validation & Benchmarks
+export const runValidationBenchmark = (numFrames = 50, confThreshold = 0.25) => 
+  fetch(`${API_BASE}/validation/run`, { 
+    method: 'POST', 
+    headers: {'Content-Type': 'application/json'}, 
+    body: JSON.stringify({ num_frames: numFrames, conf_threshold: confThreshold }) 
+  }).then(handleResponse);
+export const getLatestValidationReport = () => fetch(`${API_BASE}/validation/latest`).then(handleResponse);
 

@@ -44,6 +44,8 @@ import {
   getGeminiStatus, 
   updateGeminiConfig, 
   testGeminiConnection, 
+  testGeminiMultimodal,
+  getDiscoveredGeminiModels,
   toggleGemini, 
   clearGeminiCredentials, 
   getAIModels,
@@ -76,7 +78,7 @@ export default function SettingsPage({ systemMode, onRefresh }) {
     anomaly_sensitivity: 0.75,
     alert_threshold: 60,
     evidence_retention_days: 30,
-    gemini_model: 'gemini-2.5-flash',
+    gemini_model: 'gemini-3.6-flash',
     gemini_low_conf_threshold: 0.45,
     gemini_auto_trigger: true,
     cooldown_seconds: 15
@@ -87,16 +89,18 @@ export default function SettingsPage({ systemMode, onRefresh }) {
   // Gemini state
   const [geminiStatus, setGeminiStatus] = useState({
     configured: false,
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.6-flash',
     enabled: true,
     masked_key: null,
     status: 'UNCONFIGURED'
   });
   const [newKey, setNewKey] = useState('');
   const [showKey, setShowKey] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash');
+  const [selectedModel, setSelectedModel] = useState('gemini-3.6-flash');
   const [customModel, setCustomModel] = useState('');
+  const [discoveredModels, setDiscoveredModels] = useState([]);
   const [testingGemini, setTestingGemini] = useState(false);
+  const [testingMultimodal, setTestingMultimodal] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [savingGemini, setSavingGemini] = useState(false);
 
@@ -121,12 +125,13 @@ export default function SettingsPage({ systemMode, onRefresh }) {
   const loadAll = async () => {
     loadReadiness();
     try {
-      const [cfg, gStatus, mList, aLog, cHist] = await Promise.all([
+      const [cfg, gStatus, mList, aLog, cHist, dModels] = await Promise.all([
         getSystemSettings().catch(() => null),
         getGeminiStatus().catch(() => null),
         getAIModels().catch(() => []),
         getAuditLog().catch(() => []),
-        getConfigHistory().catch(() => [])
+        getConfigHistory().catch(() => []),
+        getDiscoveredGeminiModels().catch(() => null)
       ]);
       if (cfg && !cfg.detail) {
         setSettings(prev => ({ ...prev, ...cfg }));
@@ -135,6 +140,9 @@ export default function SettingsPage({ systemMode, onRefresh }) {
       if (gStatus && !gStatus.detail) {
         setGeminiStatus(gStatus);
         if (gStatus.model) setSelectedModel(gStatus.model);
+      }
+      if (dModels && Array.isArray(dModels.models)) {
+        setDiscoveredModels(dModels.models);
       }
       if (Array.isArray(mList)) setModels(mList);
       if (Array.isArray(aLog)) setAuditLog(aLog);
@@ -161,21 +169,10 @@ export default function SettingsPage({ systemMode, onRefresh }) {
     setSavingSettings(true);
     setSettingsFeedback(null);
     try {
-      const updated = await updateSystemSettings({
-        detection_conf: parseFloat(settings.detection_conf),
-        loitering_seconds: parseFloat(settings.loitering_seconds),
-        running_threshold: parseFloat(settings.running_threshold),
-        anomaly_sensitivity: parseFloat(settings.anomaly_sensitivity),
-        alert_threshold: parseInt(settings.alert_threshold),
-        evidence_retention_days: parseInt(settings.evidence_retention_days),
-        gemini_model: selectedModel === 'custom' ? customModel : selectedModel,
-        gemini_low_conf_threshold: parseFloat(settings.gemini_low_conf_threshold),
-        cooldown_seconds: parseInt(settings.cooldown_seconds)
-      });
-      setSettings(updated);
-      setSettingsFeedback({ type: 'success', text: 'Operational parameters persisted and applied dynamically.' });
+      await updateSystemSettings(settings);
+      setSettingsFeedback({ type: 'success', text: 'Operational parameters updated successfully.' });
       setTimeout(() => setSettingsFeedback(null), 3000);
-      loadAll();
+      loadReadiness();
     } catch (err) {
       setSettingsFeedback({ type: 'error', text: 'Failed to update settings: ' + err.message });
     } finally {
@@ -185,18 +182,17 @@ export default function SettingsPage({ systemMode, onRefresh }) {
 
   const handleSaveGeminiKey = async (e) => {
     e.preventDefault();
-    if (!newKey && selectedModel === geminiStatus.model) return;
     setSavingGemini(true);
+    setTestResult(null);
     try {
-      const targetModel = selectedModel === 'custom' ? (customModel || 'gemini-2.5-flash') : selectedModel;
+      const targetModel = selectedModel === 'custom' ? customModel : selectedModel;
       const res = await updateGeminiConfig({
-        api_key: newKey || undefined,
-        model: targetModel,
-        enabled: true
+        api_key: newKey.trim() || undefined,
+        model: targetModel || undefined
       });
       setGeminiStatus(res);
       setNewKey('');
-      setTestResult({ success: true, message: 'Gemini configuration securely stored in vault.' });
+      setTestResult({ success: true, message: `Gemini configuration updated. Active model: ${res.model}` });
       setTimeout(() => setTestResult(null), 4000);
       loadReadiness();
     } catch (err) {
@@ -220,6 +216,34 @@ export default function SettingsPage({ systemMode, onRefresh }) {
       setTestResult({ success: false, message: 'Connection test failed: ' + err.message });
     } finally {
       setTestingGemini(false);
+    }
+  };
+
+  const handleTestMultimodal = async () => {
+    setTestingMultimodal(true);
+    setTestResult(null);
+    try {
+      const targetModel = selectedModel === 'custom' ? customModel : selectedModel;
+      const res = await testGeminiMultimodal({
+        api_key: newKey || undefined,
+        model: targetModel || undefined
+      });
+      if (res.success && (res.multimodal_passed || res.analysis)) {
+        const summary = res.analysis?.scene_summary || res.message || 'Visual understanding passed';
+        setTestResult({
+          success: true,
+          message: `Multimodal Test Passed (${Math.round(res.latency_ms)}ms) on ${res.model}: "${summary}"`
+        });
+      } else {
+        setTestResult({
+          success: false,
+          message: res.message || 'Multimodal understanding check failed.'
+        });
+      }
+    } catch (err) {
+      setTestResult({ success: false, message: 'Multimodal test failed: ' + err.message });
+    } finally {
+      setTestingMultimodal(false);
     }
   };
 
@@ -615,9 +639,15 @@ export default function SettingsPage({ systemMode, onRefresh }) {
                       onChange={e => setSelectedModel(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-800 px-3 py-1.5 rounded text-xs text-white focus:outline-none focus:border-sky-500 font-sans"
                     >
-                      <option value="gemini-2.5-flash">gemini-2.5-flash (Recommended)</option>
+                      <option value="gemini-3.6-flash">gemini-3.6-flash (Recommended Standard)</option>
+                      <option value="gemini-3.5-flash">gemini-3.5-flash (Fast Multimodal)</option>
+                      <option value="gemini-flash-latest">gemini-flash-latest</option>
+                      <option value="gemini-3.7-flash">gemini-3.7-flash</option>
                       <option value="gemini-1.5-flash">gemini-1.5-flash</option>
                       <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                      {discoveredModels.filter(m => m.supported && !['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.7-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'].includes(m.id)).map(m => (
+                        <option key={m.id} value={m.id}>{m.displayName || m.id} (Discovered)</option>
+                      ))}
                       <option value="custom">Custom Model Name...</option>
                     </select>
                   </div>
@@ -627,7 +657,7 @@ export default function SettingsPage({ systemMode, onRefresh }) {
                       <label className="block text-xs font-mono text-slate-400 mb-1">Custom Model Identifier</label>
                       <input
                         type="text"
-                        placeholder="e.g. gemini-2.5-flash"
+                        placeholder="e.g. gemini-3.6-flash"
                         value={customModel}
                         onChange={e => setCustomModel(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-800 px-3 py-1.5 rounded text-xs text-white font-mono"
@@ -646,7 +676,17 @@ export default function SettingsPage({ systemMode, onRefresh }) {
                       className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-medium transition flex items-center gap-1.5 border border-slate-700"
                     >
                       <RefreshCw className={`w-3 h-3 ${testingGemini ? 'animate-spin' : ''}`} />
-                      <span>{testingGemini ? 'Testing Latency...' : 'Test Connection'}</span>
+                      <span>{testingGemini ? 'Testing Latency...' : 'Test Ping'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleTestMultimodal}
+                      disabled={testingMultimodal}
+                      className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 rounded text-xs font-medium transition flex items-center gap-1.5 border border-amber-500/30"
+                    >
+                      <Sparkles className={`w-3 h-3 ${testingMultimodal ? 'animate-spin' : ''}`} />
+                      <span>{testingMultimodal ? 'Analyzing Image...' : 'Test Vision'}</span>
                     </button>
 
                     {geminiStatus.configured && (

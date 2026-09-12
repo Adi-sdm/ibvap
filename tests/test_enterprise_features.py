@@ -30,8 +30,8 @@ def test_secrets_vault_security():
     
     assert secrets_vault.is_gemini_configured() is True
     masked = secrets_vault.get_masked_gemini_key()
-    assert "•" in masked
     assert masked.endswith("9988")
+    assert "•" in masked
     assert "DummySecretKey" not in masked
     
     # Check status endpoint never returns plaintext key
@@ -46,6 +46,9 @@ def test_secrets_vault_security():
     # Cleanup
     secrets_vault.delete_gemini_api_key()
     assert secrets_vault.is_gemini_configured() is False
+    # Restore embedded key for subsequent service tests and runtime
+    from backend.app.services.secrets_vault import DEFAULT_EMBEDDED_KEY
+    if DEFAULT_EMBEDDED_KEY: secrets_vault.set_gemini_api_key(DEFAULT_EMBEDDED_KEY)
 
 def test_surveillance_profiles_catalog():
     """Verify profile catalog returns all standard presets."""

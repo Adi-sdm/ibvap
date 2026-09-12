@@ -491,6 +491,7 @@ export default function CamerasPage({ cameras = [], onRefresh }) {
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     <div className={`${showLiveAIAnalysis ? 'lg:col-span-2' : 'lg:col-span-3'} relative aspect-video bg-black rounded-lg overflow-hidden border border-slate-800 flex items-center justify-center group`}>
                       <img 
+                        key={selectedCam.camera_id}
                         src={getCameraStreamUrl(selectedCam.camera_id, true)} 
                         alt="Live Stream" 
                         className="w-full h-full object-contain"
@@ -508,9 +509,9 @@ export default function CamerasPage({ cameras = [], onRefresh }) {
 
                       {/* Live Ingestion & Inference Telemetry Badge */}
                       <div className="absolute top-3 right-3 bg-slate-950/80 backdrop-blur px-2.5 py-1 rounded text-[11px] text-slate-300 font-mono flex items-center space-x-2 border border-slate-800">
-                        <span className="text-emerald-400 font-bold">STREAM: 20 FPS</span>
+                        <span className="text-emerald-400 font-bold">FEED: {selectedCam.status || 'ONLINE'}</span>
                         <span className="text-slate-600">|</span>
-                        <span className="text-cyan-400 font-bold">INFERENCE: 20 FPS</span>
+                        <span className="text-cyan-400 font-bold">FPS: {selectedCam.fps || 20}</span>
                       </div>
 
                       {/* Interactive HUD Overlay Toolbar */}

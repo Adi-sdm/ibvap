@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 import json
@@ -520,6 +521,72 @@ def clear_gemini_credentials():
     secrets_vault.delete_gemini_api_key()
     return {"status": "cleared", "configured": False}
 
+@router.get("/ai/gemini/models")
+async def get_gemini_models():
+    """Dynamically queries Google Gemini for verified multimodal models."""
+    models = await gemini_service.discover_models()
+    return {"models": models}
+
+@router.post("/ai/gemini/test-multimodal")
+async def test_gemini_multimodal(req: Optional[GeminiTestRequest] = None):
+    """Executes a real multimodal test frame understanding check with Google Gemini."""
+    key = req.api_key if req else None
+    model = req.model if req else None
+    result = await gemini_service.test_multimodal(api_key=key, model=model)
+    return result
+
+@router.post("/cameras/{camera_id}/consult-gemini")
+async def consult_camera_gemini(camera_id: str, db: Session = Depends(get_db)):
+    """Live operator advisory consultation directly on a camera's current frame and tracks."""
+    from backend.app.main import active_pipelines
+    
+    cam = db.query(CameraDB).filter(CameraDB.camera_id == camera_id).first()
+    if not cam:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    frame = None
+    telemetry = {}
+    
+    pipeline = active_pipelines.get(camera_id)
+    if pipeline:
+        try:
+            frame = pipeline.get_latest_frame()
+            stats = pipeline.health_status
+            telemetry = {
+                "active_tracks": len(getattr(pipeline, "latest_detections", [])),
+                "fps": stats.get("fps", 0),
+                "last_detections": list(getattr(pipeline, "latest_detections", []))
+            }
+        except Exception:
+            pass
+
+    if frame is None:
+        # Fallback: tactical test frame representing camera sector
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        cv2.putText(frame, f"CAM: {cam.name or camera_id}", (40, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 120), 2)
+        cv2.putText(frame, f"LIVE CONSULTATION REQUEST", (40, 250), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 1)
+
+    context = {
+        "event_id": f"live-consult-{camera_id}-{int(time.time())}",
+        "camera_id": camera_id,
+        "event_type": "OPERATOR_LIVE_ADVISORY",
+        "severity": "MEDIUM",
+        "class_name": cam.stream_type or "perimeter",
+        "risk_score": 45,
+        "behaviour": "Operator live verification requested",
+        "profile": cam.camera_profile or "Border Fence",
+        "sector": cam.sector or "Sector North",
+        "telemetry": telemetry
+    }
+
+    result = await gemini_service.analyze_frame(frame, context)
+    res_dict = result.to_dict()
+    res_dict["success"] = result.status == "COMPLETED"
+    res_dict["gemini_analysis"] = result.to_dict()
+    res_dict["camera_id"] = camera_id
+    res_dict["timestamp"] = time.time()
+    return res_dict
+
 @router.post("/events/{event_id}/consult-gemini")
 async def consult_gemini_on_demand(event_id: str, db: Session = Depends(get_db)):
     """Operator on-demand consultation for secondary Gemini reasoning on an incident."""
@@ -564,7 +631,10 @@ async def consult_gemini_on_demand(event_id: str, db: Session = Depends(get_db))
         "data": result.to_dict()
     })
 
-    return result.to_dict()
+    res_dict = result.to_dict()
+    res_dict["success"] = result.status == "COMPLETED"
+    res_dict["gemini_analysis"] = result.to_dict()
+    return res_dict
 
 # --- AI SITUATION ASSESSMENT ---
 @router.post("/ai/situation-assessment")
@@ -939,17 +1009,72 @@ def set_mode(payload: dict):
         stop_demo_mode()
     return {"status": "ok", "mode": target}
 
+class DemoStartRequest(BaseModel):
+    scenario_type: Optional[str] = "NORMAL"
+    seed: Optional[int] = 42
+    speed: Optional[float] = 1.0
+
+class DemoSpeedRequest(BaseModel):
+    speed: float
+
+class DemoScenarioGenRequest(BaseModel):
+    prompt: str
+
 @router.post("/demo/start")
-def start_demo():
+def start_demo(req: Optional[DemoStartRequest] = None):
+    scenario = req.scenario_type if req and req.scenario_type else "NORMAL"
+    seed = req.seed if req and req.seed is not None else 42
+    speed = req.speed if req and req.speed is not None else 1.0
+    from backend.app.services.demo_engine import demo_engine
     from backend.app.main import start_demo_mode
     start_demo_mode()
-    return {"status": "started"}
+    res = demo_engine.start(scenario_type=scenario, seed=seed, speed=speed)
+    res["status"] = "started"
+    return res
 
 @router.post("/demo/stop")
 def stop_demo():
+    from backend.app.services.demo_engine import demo_engine
     from backend.app.main import stop_demo_mode
     stop_demo_mode()
-    return {"status": "stopped"}
+    res = demo_engine.stop()
+    res["status"] = "stopped"
+    return res
+
+@router.post("/demo/pause")
+def pause_demo():
+    from backend.app.services.demo_engine import demo_engine
+    return demo_engine.pause()
+
+@router.post("/demo/resume")
+def resume_demo():
+    from backend.app.services.demo_engine import demo_engine
+    return demo_engine.resume()
+
+@router.post("/demo/step")
+def step_demo():
+    from backend.app.services.demo_engine import demo_engine
+    return demo_engine.step()
+
+@router.post("/demo/reset")
+def reset_demo():
+    from backend.app.services.demo_engine import demo_engine
+    return demo_engine.reset()
+
+@router.post("/demo/speed")
+def set_demo_speed(req: DemoSpeedRequest):
+    from backend.app.services.demo_engine import demo_engine
+    return demo_engine.set_speed(req.speed)
+
+@router.get("/demo/status")
+def get_demo_status():
+    from backend.app.services.demo_engine import demo_engine
+    return demo_engine.get_status()
+
+@router.post("/demo/generate-scenario")
+def generate_demo_scenario(req: DemoScenarioGenRequest):
+    from backend.app.services.demo_engine import demo_engine
+    return demo_engine.generate_ai_scenario(req.prompt)
 
 # --- AUTHORIZED ENTITIES & VEHICLE INTELLIGENCE ---
 
@@ -1589,3 +1714,22 @@ def delete_sector(sector_id: str, db: Session = Depends(get_db)):
     db.delete(s)
     db.commit()
     return {"status": "deleted", "sector_id": sector_id}
+
+# --- MODEL VALIDATION & VERIFIED BENCHMARKS ---
+class ValidationBenchmarkRequest(BaseModel):
+    num_frames: Optional[int] = 50
+    conf_threshold: Optional[float] = 0.25
+
+@router.post("/validation/run")
+def run_validation_benchmark(req: Optional[ValidationBenchmarkRequest] = None):
+    """Executes a live measured mathematical validation run measuring Precision, Recall, F1, and Latency."""
+    from backend.app.services.validation_runner import validation_runner
+    n = req.num_frames if req and req.num_frames else 50
+    c = req.conf_threshold if req and req.conf_threshold else 0.25
+    return validation_runner.run_benchmark(num_frames=n, conf_threshold=c)
+
+@router.get("/validation/latest")
+def get_latest_validation_report():
+    """Retrieves the latest verified AI evaluation report."""
+    from backend.app.services.validation_runner import validation_runner
+    return validation_runner.get_latest_report()

@@ -25,7 +25,9 @@ import {
   getSystemSettings, 
   updateSystemSettings, 
   updateCameraConfig,
-  createCamera
+  createCamera,
+  getVehicleCorridors,
+  getVehicleHandoff
 } from '../services/api';
 
 // Geodesic coordinate calculation for circular sector FOV cone
@@ -99,6 +101,23 @@ export default function GISMap({ cameras = [], incidents = [], onNavigateToCamer
   addCameraModeRef.current = addCameraMode;
   const calibrationCamIdRef = useRef(null);
   calibrationCamIdRef.current = calibrationCamId;
+
+  // Tactical Corridors & Route Prediction (Truthful GIS)
+  const [corridors, setCorridors] = useState([]);
+  const [predictedHandoff, setPredictedHandoff] = useState(null);
+  const [showRoutes, setShowRoutes] = useState(true);
+
+  useEffect(() => {
+    getVehicleCorridors().then(c => setCorridors(c || [])).catch(() => setCorridors([]));
+  }, [cameras]);
+
+  useEffect(() => {
+    if (selectedCam?.camera_id) {
+      getVehicleHandoff(selectedCam.camera_id).then(setPredictedHandoff).catch(() => setPredictedHandoff(null));
+    } else {
+      setPredictedHandoff(null);
+    }
+  }, [selectedCam]);
 
   // Load operational area from system settings
   useEffect(() => {
@@ -348,7 +367,37 @@ export default function GISMap({ cameras = [], incidents = [], onNavigateToCamer
         }).addTo(group);
       }
     }
-  }, [cameras, showFOV, selectedCam, calibrationCamId, tempCoords, tempDirection, tempFov, tempRange, targetPoint, opArea]);
+
+    // 4. Draw Truthful Vehicle Routes: Observed, Estimated, and Predicted
+    if (showRoutes) {
+      // Estimated Pairwise Corridors (Dashed Amber line)
+      corridors.forEach(cor => {
+        const c1 = cameras.find(c => c.camera_id === cor.origin_camera);
+        const c2 = cameras.find(c => c.camera_id === cor.destination_camera);
+        if (c1 && c2 && c1.latitude != null && c2.latitude != null) {
+          L.polyline([[c1.latitude, c1.longitude], [c2.latitude, c2.longitude]], {
+            color: '#F59E0B',
+            weight: 2,
+            dashArray: '6, 6',
+            opacity: 0.65
+          }).bindTooltip(`Estimated Corridor: ${cor.name || 'Patrol Route'} (${Math.round(cor.distance_meters)}m)`).addTo(group);
+        }
+      });
+
+      // Predicted Route Handoff (Dotted Cyan line)
+      if (selectedCam && predictedHandoff && predictedHandoff.predicted_next_camera) {
+        const nextCam = cameras.find(c => c.camera_id === predictedHandoff.predicted_next_camera);
+        if (nextCam && selectedCam.latitude != null && nextCam.latitude != null) {
+          L.polyline([[selectedCam.latitude, selectedCam.longitude], [nextCam.latitude, nextCam.longitude]], {
+            color: '#38BDF8',
+            weight: 3,
+            dashArray: '2, 6',
+            opacity: 0.95
+          }).bindTooltip(`Predicted Route: ${selectedCam.name} ➔ ${nextCam.name} (ETA: ${predictedHandoff.estimated_time_seconds}s)`).addTo(group);
+        }
+      }
+    }
+  }, [cameras, showFOV, showRoutes, corridors, predictedHandoff, selectedCam, calibrationCamId, tempCoords, tempDirection, tempFov, tempRange, targetPoint, opArea]);
 
   // Live GPS Centering
   const handleDetectDeviceLocation = () => {
@@ -528,6 +577,20 @@ export default function GISMap({ cameras = [], incidents = [], onNavigateToCamer
             <span>FOV Cones</span>
           </button>
 
+          {/* Tactical Routes & Corridors Toggle */}
+          <button
+            onClick={() => setShowRoutes(!showRoutes)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded font-mono border transition-colors ${
+              showRoutes 
+                ? 'bg-amber-950/60 border-amber-700 text-amber-300' 
+                : 'bg-slate-800 border-slate-700 text-slate-400'
+            }`}
+            title="Toggle Estimated Corridors and Predicted Handoffs"
+          >
+            <Navigation className="w-3.5 h-3.5" />
+            <span>Tactical Routes</span>
+          </button>
+
           {/* GPS Auto Center */}
           <button
             onClick={handleDetectDeviceLocation}
@@ -556,6 +619,23 @@ export default function GISMap({ cameras = [], incidents = [], onNavigateToCamer
       <div className="relative flex-1 w-full h-full overflow-hidden flex">
         {/* Leaflet Map Canvas Container */}
         <div ref={mapContainerRef} className="flex-1 w-full h-full z-0 bg-slate-900" />
+
+        {/* Tactical Route & FOV Legend */}
+        <div className="absolute bottom-6 left-4 z-10 p-2.5 rounded-lg bg-slate-950/90 border border-slate-800 backdrop-blur text-[10px] font-mono space-y-1.5 shadow-xl pointer-events-none">
+          <div className="font-bold text-slate-300 border-b border-slate-800 pb-1">TACTICAL GIS LEGEND</div>
+          <div className="flex items-center gap-2 text-emerald-400">
+            <span className="w-3.5 h-1 bg-emerald-500 rounded"></span>
+            <span>Solid: Observed / Calibrated Field</span>
+          </div>
+          <div className="flex items-center gap-2 text-amber-400">
+            <span className="w-3.5 h-0.5 border-t-2 border-dashed border-amber-400"></span>
+            <span>Dashed: Estimated Sector Corridor</span>
+          </div>
+          <div className="flex items-center gap-2 text-sky-400">
+            <span className="w-3.5 h-0.5 border-t-2 border-dotted border-sky-400"></span>
+            <span>Dotted: Predicted Downstream Route</span>
+          </div>
+        </div>
 
         {/* Floating Calibration HUD Overlay */}
         {calibrationCamId && (

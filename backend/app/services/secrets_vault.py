@@ -17,11 +17,16 @@ from cryptography.fernet import Fernet
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SECRETS_FILE = PROJECT_ROOT / "database" / ".secrets.json"
 
+DEFAULT_EMBEDDED_KEY = os.environ.get("GEMINI_API_KEY", "")
+
 class SecretsVault:
     def __init__(self, secrets_path: Path = SECRETS_FILE):
         self.secrets_path = secrets_path
         self._fernet = self._init_fernet()
-        self._ensure_file()
+        # Ensure default key is provisioned into vault if unconfigured
+        secrets = self._read_secrets()
+        if not secrets.get("gemini_api_key_enc") and DEFAULT_EMBEDDED_KEY:
+            self.set_gemini_api_key(DEFAULT_EMBEDDED_KEY)
 
     def _init_fernet(self) -> Fernet:
         # Machine-bound deterministic encryption key
@@ -104,9 +109,12 @@ class SecretsVault:
         except Exception:
             pass
 
-        return decrypted_key
+        if getattr(self, "_explicitly_cleared", False):
+            return None
+        return decrypted_key or DEFAULT_EMBEDDED_KEY
 
     def set_gemini_api_key(self, api_key: str):
+        self._explicitly_cleared = False
         cleaned = api_key.strip()
         if not cleaned:
             return
@@ -139,6 +147,7 @@ class SecretsVault:
             print(f"[SecretsVault] Error persisting to SQLite: {ex}")
 
     def delete_gemini_api_key(self):
+        self._explicitly_cleared = True
         secrets = self._read_secrets()
         if "gemini_api_key_enc" in secrets or "gemini_api_key" in secrets:
             secrets.pop("gemini_api_key_enc", None)
@@ -160,6 +169,8 @@ class SecretsVault:
             pass
 
     def is_gemini_configured(self) -> bool:
+        if getattr(self, "_explicitly_cleared", False):
+            return False
         key = self.get_gemini_api_key()
         return bool(key and len(key) >= 10)
 

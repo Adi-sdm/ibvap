@@ -6,7 +6,7 @@ import uuid
 import cv2
 import numpy as np
 from pathlib import Path
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Optional, Dict, Any, List
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -47,6 +47,19 @@ class CameraPipeline(threading.Thread):
         self.latest_annotated = None
         self.frame_lock = threading.Lock()
         self.config_lock = threading.Lock()
+        
+        # Pre-encoded JPEG caching to decouple capture loop from streaming HTTP consumers
+        self._cached_jpeg_annotated: Optional[bytes] = None
+        self._cached_jpeg_raw: Optional[bytes] = None
+        self._jpeg_lock = threading.Lock()
+        
+        # Performance & telemetry monitoring
+        self.stream_fps = 0.0
+        self.inference_fps = 0.0
+        self.inference_latency_ms = 0.0
+        self._last_stream_time = time.time()
+        self._frame_interval_samples = deque(maxlen=20)
+        
         self.health_status = {"status": "INITIALIZING", "fps": 0, "resolution": "", "is_frozen": False, "frame_interval_ms": 0}
         
         # Configuration attributes
@@ -202,6 +215,32 @@ class CameraPipeline(threading.Thread):
             self._load_zones()
         print(f"[{self.camera_id}] Configuration hot-reloaded dynamically (Profile: {self.profile}).")
 
+    def _update_frame_and_cache(self, frame: np.ndarray, annotated_frame: Optional[np.ndarray] = None):
+        """Update current frames and pre-encode JPEG bytes outside critical lock."""
+        now = time.time()
+        interval = now - self._last_stream_time
+        self._last_stream_time = now
+        if interval > 0.001:
+            self._frame_interval_samples.append(interval)
+            avg_interval = sum(self._frame_interval_samples) / len(self._frame_interval_samples)
+            self.stream_fps = round(1.0 / avg_interval, 1) if avg_interval > 0 else 0.0
+            self.health_status["fps"] = self.stream_fps
+
+        with self.frame_lock:
+            self.latest_frame = frame
+            self.latest_annotated = annotated_frame if annotated_frame is not None else frame
+
+        # Compress JPEGs outside frame_lock so video stream reads never block capture/inference
+        target_ann = annotated_frame if annotated_frame is not None else frame
+        ret_ann, buf_ann = cv2.imencode('.jpg', target_ann, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        ret_raw, buf_raw = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+
+        with self._jpeg_lock:
+            if ret_ann:
+                self._cached_jpeg_annotated = buf_ann.tobytes()
+            if ret_raw:
+                self._cached_jpeg_raw = buf_raw.tobytes()
+
     def _load_zones(self):
         """Reload zones from database."""
         try:
@@ -320,21 +359,20 @@ class CameraPipeline(threading.Thread):
             # Process detection every Nth frame
             if self.frame_count % self.process_every_n != 0 or self.model is None:
                 # Render previous detections on current frame for smooth stream
-                with self.frame_lock:
-                    self.latest_frame = frame.copy()
-                    self.latest_annotated = self.annotator.annotate(
-                        frame=frame,
-                        boxes=self.latest_detections,
-                        zones=self.zones,
-                        overlay_config=self.overlay_config,
-                        telemetry={
-                            "fps": self.health_status.get("fps", 0),
-                            "profile": self.profile,
-                            "sector": self.sector,
-                            "camera_id": self.camera_id
-                        },
-                        trajectories=self.track_trajectories
-                    )
+                ann = self.annotator.annotate(
+                    frame=frame,
+                    boxes=self.latest_detections,
+                    zones=self.zones,
+                    overlay_config=self.overlay_config,
+                    telemetry={
+                        "fps": self.stream_fps or self.health_status.get("fps", 0),
+                        "profile": self.profile,
+                        "sector": self.sector,
+                        "camera_id": self.camera_id
+                    },
+                    trajectories=self.track_trajectories
+                )
+                self._update_frame_and_cache(frame, ann)
                 time.sleep(0.01)
                 continue
             
@@ -343,6 +381,7 @@ class CameraPipeline(threading.Thread):
                 target_classes = list(self.active_class_ids)
                 
             results = None
+            inf_start = time.time()
             try:
                 with self.yolo_lock:
                     results = self.model.track(
@@ -358,9 +397,13 @@ class CameraPipeline(threading.Thread):
                             frame, conf=0.25, verbose=False,
                             classes=target_classes
                         )
-                except Exception as ex:
-                    print(f"[{self.camera_id}] Detection error: {ex}")
+                except Exception as ex2:
+                    print(f"[{self.camera_id}] Predict error: {ex2}")
                     continue
+            
+            inf_end = time.time()
+            self.inference_latency_ms = round((inf_end - inf_start) * 1000, 1)
+            self.inference_fps = round(1000.0 / self.inference_latency_ms, 1) if self.inference_latency_ms > 0 else 0.0
             
             current_detections = []
             current_track_ids = set()
@@ -578,21 +621,20 @@ class CameraPipeline(threading.Thread):
             self.latest_detections = current_detections
 
             # Render updated annotated frame
-            with self.frame_lock:
-                self.latest_frame = frame.copy()
-                self.latest_annotated = self.annotator.annotate(
-                    frame=frame,
-                    boxes=self.latest_detections,
-                    zones=self.zones,
-                    overlay_config=self.overlay_config,
-                    telemetry={
-                        "fps": self.health_status.get("fps", 0),
-                        "profile": self.profile,
-                        "sector": self.sector,
-                        "camera_id": self.camera_id
-                    },
-                    trajectories=self.track_trajectories
-                )
+            ann = self.annotator.annotate(
+                frame=frame,
+                boxes=self.latest_detections,
+                zones=self.zones,
+                overlay_config=self.overlay_config,
+                telemetry={
+                    "fps": self.stream_fps or self.health_status.get("fps", 0),
+                    "profile": self.profile,
+                    "sector": self.sector,
+                    "camera_id": self.camera_id
+                },
+                trajectories=self.track_trajectories
+            )
+            self._update_frame_and_cache(frame, ann)
 
             # Track cleanup
             for tid in list(self.track_last_seen.keys()):
@@ -816,7 +858,15 @@ class CameraPipeline(threading.Thread):
         with self.frame_lock:
             return self.latest_frame.copy() if self.latest_frame is not None else None
 
-    def get_latest_jpeg(self, annotated: bool = True):
+    def get_latest_jpeg(self, annotated: bool = True) -> Optional[bytes]:
+        """Returns latest JPEG frame instantly from pre-encoded buffer without capture lock contention."""
+        with self._jpeg_lock:
+            if annotated and self._cached_jpeg_annotated is not None:
+                return self._cached_jpeg_annotated
+            if not annotated and self._cached_jpeg_raw is not None:
+                return self._cached_jpeg_raw
+
+        # Fallback if buffer not pre-encoded yet
         with self.frame_lock:
             target = self.latest_annotated if (annotated and self.latest_annotated is not None) else self.latest_frame
             if target is not None:
@@ -824,6 +874,21 @@ class CameraPipeline(threading.Thread):
                 if ret:
                     return buffer.tobytes()
         return None
+
+    def get_stats(self) -> dict:
+        """Returns isolated, truthful pipeline telemetry metrics."""
+        return {
+            "camera_id": self.camera_id,
+            "status": self.health_status.get("status", "ONLINE"),
+            "stream_fps": self.stream_fps,
+            "inference_fps": self.inference_fps,
+            "latency_ms": self.inference_latency_ms,
+            "resolution": self.health_status.get("resolution", ""),
+            "active_tracks": len(self.latest_detections),
+            "profile": self.profile,
+            "sector": self.sector,
+            "is_demo": self.is_demo
+        }
         
     def get_live_activity_analysis(self) -> dict:
         """Returns truthful, comprehensive real-time activity and framing analysis."""

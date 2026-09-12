@@ -14,7 +14,7 @@ import {
   Info,
   Layers
 } from 'lucide-react';
-import { getCameraActivityAnalysis, consultGemini, getEvents } from '../services/api';
+import { getCameraActivityAnalysis, consultCameraLive, consultGemini, getEvents } from '../services/api';
 
 export default function LiveAIAnalysisCard({ cameraId, onClose }) {
   const [data, setData] = useState(null);
@@ -50,19 +50,16 @@ export default function LiveAIAnalysisCard({ cameraId, onClose }) {
     setGeminiError(null);
     setGeminiResult(null);
     try {
-      // Find latest event for this camera to consult Gemini
-      const eventsRes = await getEvents(0, 10);
-      const camEvent = (eventsRes?.items || []).find(e => e.camera_id === cameraId);
-      if (!camEvent) {
-        setGeminiError("No recent security event found on this camera for secondary verification.");
-        setGeminiConsulting(false);
-        return;
-      }
-      const res = await consultGemini(camEvent.event_id);
-      if (res && res.gemini_analysis) {
-        setGeminiResult(res.gemini_analysis);
+      const res = await consultCameraLive(cameraId);
+      if (res && (res.status === 'ERROR' || res.status === 'OFFLINE' || res.status === 'TIMEOUT')) {
+        setGeminiError(res.error_message || "Gemini advisory service temporarily unavailable.");
       } else {
-        setGeminiError(res?.error || "Gemini advisory key not configured or cooldown active.");
+        const analysis = res?.gemini_analysis || res;
+        if (analysis && (analysis.situational_assessment || analysis.scene_summary || analysis.status === 'COMPLETED')) {
+          setGeminiResult(analysis);
+        } else {
+          setGeminiError(res?.error_message || "Gemini advisory key not configured or cooldown active.");
+        }
       }
     } catch (err) {
       setGeminiError(err.message || "Failed to query Gemini advisory layer.");
@@ -256,16 +253,40 @@ export default function LiveAIAnalysisCard({ cameraId, onClose }) {
         </div>
 
         {geminiResult && (
-          <div className="bg-amber-950/30 border border-amber-500/40 p-2.5 rounded text-[11px] text-amber-200 space-y-1">
+          <div className="bg-amber-950/40 border border-amber-500/50 p-3 rounded text-[11px] text-amber-200 space-y-2">
             <div className="font-bold text-amber-300 flex items-center justify-between">
-              <span>Gemini Advisory Assessment:</span>
-              <span className="text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/40">
-                Threat: {geminiResult.threat_level || 'EVALUATED'}
+              <span className="flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                Gemini Advisory Assessment:
               </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[9px] bg-cyan-950 text-cyan-300 px-1.5 py-0.5 rounded border border-cyan-800">
+                  {geminiResult.model || 'gemini-3.6-flash'}
+                </span>
+                {geminiResult.latency_ms && (
+                  <span className="text-[9px] text-slate-400 font-mono">
+                    {Math.round(geminiResult.latency_ms)}ms
+                  </span>
+                )}
+              </div>
             </div>
-            <p className="text-slate-300 leading-relaxed text-[10px]">
-              {geminiResult.reasoning || JSON.stringify(geminiResult)}
+
+            <p className="text-slate-200 leading-relaxed text-[11px] bg-slate-950/60 p-2 rounded border border-slate-800">
+              {geminiResult.situational_assessment || geminiResult.scene_summary || (typeof geminiResult === 'string' ? geminiResult : JSON.stringify(geminiResult))}
             </p>
+
+            {geminiResult.recommended_operator_response && (
+              <div className="text-[10px] bg-amber-500/10 border border-amber-500/30 p-1.5 rounded text-amber-300">
+                <span className="font-bold text-amber-400">Recommended Action: </span>
+                {geminiResult.recommended_operator_response}
+              </div>
+            )}
+
+            {geminiResult.ambiguity_explanation && (
+              <div className="text-[9px] text-slate-400 italic">
+                {geminiResult.ambiguity_explanation}
+              </div>
+            )}
           </div>
         )}
 
