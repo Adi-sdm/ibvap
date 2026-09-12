@@ -3,7 +3,8 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT))
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from fastapi.testclient import TestClient
 from backend.app.main import app
@@ -14,6 +15,39 @@ from backend.app.database.models import AuthorizedVehicleDB
 @pytest.fixture
 def client():
     return TestClient(app)
+
+@pytest.fixture(autouse=True)
+def setup_test_vehicles():
+    db = SessionLocal()
+    try:
+        # Ensure test vehicle records exist for test run
+        v1 = db.query(AuthorizedVehicleDB).filter(AuthorizedVehicleDB.plate == "DL01AB1234").first()
+        if not v1:
+            v1 = AuthorizedVehicleDB(
+                plate="DL01AB1234",
+                owner_name="Test Patrol Unit Alpha",
+                department="Border Security",
+                vehicle_type="SUV",
+                authorized_color="WHITE",
+                authorized_sectors="Sector Alpha",
+                status="ACTIVE"
+            )
+            db.add(v1)
+        v2 = db.query(AuthorizedVehicleDB).filter(AuthorizedVehicleDB.plate == "PB02XY9999").first()
+        if not v2:
+            v2 = AuthorizedVehicleDB(
+                plate="PB02XY9999",
+                owner_name="Test Syndicate Vehicle",
+                department="Unknown",
+                vehicle_type="TRUCK",
+                authorized_color="BLACK",
+                authorized_sectors="Sector Alpha",
+                status="WATCHLIST"
+            )
+            db.add(v2)
+        db.commit()
+    finally:
+        db.close()
 
 def test_vehicle_intel_verification_logic():
     db = SessionLocal()
@@ -78,3 +112,39 @@ def test_vehicle_intel_api_endpoints(client):
     assert "framing_overview" in data
     assert "tracks" in data
     assert "pose_model_status" in data
+
+if __name__ == "__main__":
+    db = SessionLocal()
+    try:
+        v1 = db.query(AuthorizedVehicleDB).filter(AuthorizedVehicleDB.plate == "DL01AB1234").first()
+        if not v1:
+            v1 = AuthorizedVehicleDB(
+                plate="DL01AB1234",
+                owner_name="Test Patrol Unit Alpha",
+                department="Border Security",
+                vehicle_type="SUV",
+                authorized_color="WHITE",
+                authorized_sectors="Sector Alpha",
+                status="ACTIVE"
+            )
+            db.add(v1)
+        v2 = db.query(AuthorizedVehicleDB).filter(AuthorizedVehicleDB.plate == "PB02XY9999").first()
+        if not v2:
+            v2 = AuthorizedVehicleDB(
+                plate="PB02XY9999",
+                owner_name="Test Syndicate Vehicle",
+                department="Unknown",
+                vehicle_type="TRUCK",
+                authorized_color="BLACK",
+                authorized_sectors="Sector Alpha",
+                status="WATCHLIST"
+            )
+            db.add(v2)
+        db.commit()
+    finally:
+        db.close()
+
+    test_vehicle_intel_verification_logic()
+    test_vehicle_handoff_prediction()
+    test_vehicle_intel_api_endpoints(TestClient(app))
+    print("ALL VEHICLE INTEL TESTS PASSED!")

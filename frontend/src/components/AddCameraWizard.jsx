@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import L from 'leaflet';
 import { 
   Camera, 
   X, 
@@ -7,11 +8,17 @@ import {
   AlertTriangle, 
   ChevronRight, 
   ChevronLeft,
-  Radio,
-  HardDrive,
-  CheckCircle2,
-  RefreshCw,
-  Server
+  Radio, 
+  HardDrive, 
+  CheckCircle2, 
+  RefreshCw, 
+  Server,
+  Navigation,
+  MapPin,
+  Search,
+  Crosshair,
+  LocateFixed,
+  Compass
 } from 'lucide-react';
 import { testCameraConnection, createCamera, getSectors } from '../services/api';
 
@@ -117,6 +124,106 @@ export default function AddCameraWizard({ onClose, onComplete }) {
   const [skipLocation, setSkipLocation] = useState(false);
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
+  const [gisMode, setGisMode] = useState('manual'); // 'manual', 'gps', 'map', 'search'
+  const [gpsAccuracy, setGpsAccuracy] = useState(null);
+  const [gpsDetecting, setGpsDetecting] = useState(false);
+  const [gpsError, setGpsError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+
+  const mapContainerRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markerRef = useRef(null);
+
+  const handleDetectGPS = () => {
+    if (!navigator.geolocation) {
+      setGpsError("Geolocation is not supported by your browser.");
+      return;
+    }
+    setGpsDetecting(true);
+    setGpsError('');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGpsDetecting(false);
+        setLatitude(pos.coords.latitude.toFixed(6));
+        setLongitude(pos.coords.longitude.toFixed(6));
+        setGpsAccuracy(Math.round(pos.coords.accuracy));
+      },
+      (err) => {
+        setGpsDetecting(false);
+        setGpsError(err.message || "Failed to retrieve device GPS coordinates.");
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const handleSearchLocation = async (e) => {
+    if (e) e.preventDefault();
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery.trim())}`);
+      const items = await res.json();
+      setSearchResults(items.slice(0, 5) || []);
+    } catch (err) {
+      console.error("Geocoding failed:", err);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  useEffect(() => {
+    if (step === 4 && gisMode === 'map' && mapContainerRef.current) {
+      const initLat = parseFloat(latitude) || 28.6139;
+      const initLng = parseFloat(longitude) || 77.2090;
+
+      if (!mapInstanceRef.current) {
+        const map = L.map(mapContainerRef.current).setView([initLat, initLng], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap'
+        }).addTo(map);
+
+        const customIcon = L.divIcon({
+          className: 'custom-cam-pin',
+          html: `<div style="background:#10b981;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 10px rgba(16,185,129,0.8);"></div>`,
+          iconSize: [14, 14],
+          iconAnchor: [7, 7]
+        });
+
+        const marker = L.marker([initLat, initLng], { draggable: true, icon: customIcon }).addTo(map);
+        marker.on('dragend', (e) => {
+          const latlng = e.target.getLatLng();
+          setLatitude(latlng.lat.toFixed(6));
+          setLongitude(latlng.lng.toFixed(6));
+        });
+
+        map.on('click', (e) => {
+          marker.setLatLng(e.latlng);
+          setLatitude(e.latlng.lat.toFixed(6));
+          setLongitude(e.latlng.lng.toFixed(6));
+        });
+
+        markerRef.current = marker;
+        mapInstanceRef.current = map;
+      } else {
+        mapInstanceRef.current.setView([initLat, initLng]);
+        if (markerRef.current) markerRef.current.setLatLng([initLat, initLng]);
+      }
+
+      setTimeout(() => {
+        if (mapInstanceRef.current) mapInstanceRef.current.invalidateSize();
+      }, 250);
+    }
+
+    return () => {
+      if (mapInstanceRef.current && (step !== 4 || gisMode !== 'map')) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+        markerRef.current = null;
+      }
+    };
+  }, [step, gisMode]);
 
   // Step 5: Optics
   const [direction, setDirection] = useState(0); // 0-360 deg
@@ -478,49 +585,192 @@ export default function AddCameraWizard({ onClose, onComplete }) {
           {/* STEP 4: GIS Placement */}
           {step === 4 && (
             <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-semibold text-white">Geographic Coordinates (GIS)</h3>
-                <p className="text-xs text-slate-400 mt-1">Provide exact geographic coordinates for cartographic projection. Do not fake coordinates.</p>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
-                <label className="flex items-center gap-3 cursor-pointer">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-white">Geographic Coordinates (GIS)</h3>
+                  <p className="text-xs text-slate-400 mt-1">Select placement method to bind ingestion source to tactical GIS coordinates.</p>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={skipLocation}
                     onChange={(e) => setSkipLocation(e.target.checked)}
                     className="rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-0"
                   />
-                  <span className="text-xs text-slate-300">Skip geographic placement (Camera will be uncalibrated)</span>
+                  <span className="text-xs text-slate-400 font-mono">Skip Location</span>
                 </label>
+              </div>
 
-                {!skipLocation && (
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <div>
-                      <label className="text-xs font-mono text-slate-400">Latitude (°N)</label>
-                      <input
-                        type="number"
-                        step="0.000001"
-                        value={latitude}
-                        onChange={(e) => setLatitude(e.target.value)}
-                        placeholder="e.g. 26.6047"
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white font-mono focus:border-emerald-500 outline-none mt-1"
+              {!skipLocation && (
+                <div className="space-y-4">
+                  {/* Mode Selector Tabs */}
+                  <div className="grid grid-cols-4 gap-2 p-1 rounded-xl bg-slate-950 border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setGisMode('gps')}
+                      className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-mono font-medium transition ${
+                        gisMode === 'gps' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Navigation className="w-3.5 h-3.5" />
+                      <span>CURRENT GPS</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGisMode('map')}
+                      className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-mono font-medium transition ${
+                        gisMode === 'map' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>PICK ON MAP</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGisMode('search')}
+                      className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-mono font-medium transition ${
+                        gisMode === 'search' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                      <span>SEARCH PLACE</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGisMode('manual')}
+                      className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-mono font-medium transition ${
+                        gisMode === 'manual' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Crosshair className="w-3.5 h-3.5" />
+                      <span>MANUAL INPUT</span>
+                    </button>
+                  </div>
+
+                  {/* Mode 1: USE CURRENT LOCATION */}
+                  {gisMode === 'gps' && (
+                    <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-mono text-emerald-400 uppercase font-semibold">Device Hardware Geolocation</span>
+                          <p className="text-[11px] text-slate-400 mt-0.5">Poll device GPS or network triangulation sensor.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleDetectGPS}
+                          disabled={gpsDetecting}
+                          className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-mono font-bold transition flex items-center gap-2"
+                        >
+                          <LocateFixed className={`w-3.5 h-3.5 ${gpsDetecting ? 'animate-spin' : ''}`} />
+                          <span>{gpsDetecting ? 'Detecting...' : 'Detect Coordinates'}</span>
+                        </button>
+                      </div>
+
+                      {gpsError && (
+                        <div className="text-xs text-rose-400 font-mono bg-rose-500/10 border border-rose-500/20 p-2 rounded">
+                          {gpsError}
+                        </div>
+                      )}
+
+                      {gpsAccuracy !== null && (
+                        <div className="flex items-center gap-2 text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 p-2 rounded">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>GPS Locked: Precision ±{gpsAccuracy} meters accuracy</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Mode 2: PICK ON MAP */}
+                  {gisMode === 'map' && (
+                    <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
+                      <div className="flex items-center justify-between text-xs font-mono text-slate-400">
+                        <span>Click map or drag the green marker to position camera node.</span>
+                        <span className="text-emerald-400 font-bold">
+                          {latitude && longitude ? `${latitude}, ${longitude}` : 'No point chosen'}
+                        </span>
+                      </div>
+                      <div 
+                        ref={mapContainerRef} 
+                        className="w-full h-56 rounded-lg overflow-hidden border border-slate-800 z-10"
                       />
                     </div>
-                    <div>
-                      <label className="text-xs font-mono text-slate-400">Longitude (°E)</label>
-                      <input
-                        type="number"
-                        step="0.000001"
-                        value={longitude}
-                        onChange={(e) => setLongitude(e.target.value)}
-                        placeholder="e.g. 84.9360"
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white font-mono focus:border-emerald-500 outline-none mt-1"
-                      />
+                  )}
+
+                  {/* Mode 3: SEARCH LOCATION */}
+                  {gisMode === 'search' && (
+                    <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
+                      <form onSubmit={handleSearchLocation} className="flex gap-2">
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="Search border post, outpost, district, or landmark..."
+                          className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 font-mono outline-none focus:border-emerald-500"
+                        />
+                        <button
+                          type="submit"
+                          disabled={searching}
+                          className="px-3.5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-mono font-bold transition flex items-center gap-1.5"
+                        >
+                          <Search className="w-3.5 h-3.5" />
+                          <span>{searching ? 'Searching...' : 'Search'}</span>
+                        </button>
+                      </form>
+
+                      {searchResults.length > 0 && (
+                        <div className="divide-y divide-slate-800/80 rounded-lg border border-slate-800 bg-slate-900/60 overflow-hidden max-h-40 overflow-y-auto">
+                          {searchResults.map((res, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => {
+                                setLatitude(parseFloat(res.lat).toFixed(6));
+                                setLongitude(parseFloat(res.lon).toFixed(6));
+                                setSearchResults([]);
+                              }}
+                              className="w-full p-2.5 text-left text-xs hover:bg-slate-800/60 transition flex items-start justify-between gap-2"
+                            >
+                              <span className="text-slate-200 line-clamp-1">{res.display_name}</span>
+                              <span className="text-[10px] font-mono text-emerald-400 shrink-0">
+                                {parseFloat(res.lat).toFixed(4)}, {parseFloat(res.lon).toFixed(4)}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Active Coordinate Inputs (always accessible and editable) */}
+                  <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-mono text-slate-400">Latitude (°N)</label>
+                        <input
+                          type="number"
+                          step="0.000001"
+                          value={latitude}
+                          onChange={(e) => setLatitude(e.target.value)}
+                          placeholder="e.g. 26.604700"
+                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white font-mono focus:border-emerald-500 outline-none mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-mono text-slate-400">Longitude (°E)</label>
+                        <input
+                          type="number"
+                          step="0.000001"
+                          value={longitude}
+                          onChange={(e) => setLongitude(e.target.value)}
+                          placeholder="e.g. 84.936000"
+                          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white font-mono focus:border-emerald-500 outline-none mt-1"
+                        />
+                      </div>
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
 
