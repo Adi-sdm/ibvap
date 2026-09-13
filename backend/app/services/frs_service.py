@@ -203,16 +203,19 @@ class FaceRecognitionSubsystem:
         composite_score = round(max(0.0, min(100.0, (res_factor * 35.0 + sharp_factor * 45.0 + light_factor * 20.0))), 1)
 
         # 5. Rating classification
-        if composite_score >= 80.0 and len(reasons) == 0:
-            rating = "EXCELLENT"
-        elif composite_score >= 60.0 and len(reasons) == 0:
-            rating = "GOOD"
-        elif composite_score >= 40.0 and not (w < 32 or h < 32):
-            rating = "FAIR"
-        elif composite_score >= 20.0:
-            rating = "POOR"
+        if len(reasons) == 0:
+            if composite_score >= 80.0:
+                rating = "EXCELLENT"
+            elif composite_score >= 60.0:
+                rating = "GOOD"
+            else:
+                rating = "FAIR"
         else:
-            rating = "UNUSABLE"
+            # Has quality violations (e.g. blur, extreme lighting, tiny resolution)
+            if composite_score < 30.0 or w < 32 or h < 32 or laplacian_var < 20.0:
+                rating = "UNUSABLE"
+            else:
+                rating = "POOR"
 
         passed = len(reasons) == 0 and rating in ["EXCELLENT", "GOOD", "FAIR"]
 
