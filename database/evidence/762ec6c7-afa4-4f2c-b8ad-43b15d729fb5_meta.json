@@ -1,0 +1,67 @@
+{
+  "event_id": "762ec6c7-afa4-4f2c-b8ad-43b15d729fb5",
+  "camera_id": "DEMO-E2E-TEST",
+  "timestamp": 1789276832.6136804,
+  "sha256_hash": "05bbb10d7219d33b86075e8e08069d97bb970854f4cd98e28fc0d1dec6a63516",
+  "snapshot_file": "762ec6c7-afa4-4f2c-b8ad-43b15d729fb5_snapshot.jpg",
+  "clip_file": "762ec6c7-afa4-4f2c-b8ad-43b15d729fb5_clip.mp4",
+  "event_data": {
+    "event_id": "762ec6c7-afa4-4f2c-b8ad-43b15d729fb5",
+    "camera_id": "DEMO-E2E-TEST",
+    "zone_id": "ZONE-E2E-RESTRICTED",
+    "zone_name": "Restricted Zero Line",
+    "zone_type": "RESTRICTED",
+    "track_id": 5,
+    "class_name": "person",
+    "event_type": "INTRUSION_ENTRY",
+    "timestamp": 1789276832.4772723,
+    "confidence": 0.554212212562561,
+    "bbox": [
+      204.03890991210938,
+      243.55953979492188,
+      250.0154571533203,
+      317.0173645019531
+    ],
+    "norm_position": [
+      0.28378397941589356,
+      0.5283622741699219
+    ],
+    "trajectory_prev": [
+      0.2754444313049316,
+      0.5190824381510417
+    ],
+    "direction": "OUTSIDE_TO_INSIDE",
+    "loitering_seconds": 0.0,
+    "risk_score": 75,
+    "severity": "Critical",
+    "explainability": [
+      "\u2713 Target identified as 'person' (+10 pts)",
+      "\u2713 Target entered Restricted Perimeter Zone (+35 pts)",
+      "\u2713 Physical boundary perimeter crossing detected (+30 pts)"
+    ],
+    "ai_summary": "Target activity detected in perimeter sector by person.",
+    "behaviour": "Walking",
+    "detected_objects": [
+      "person"
+    ],
+    "is_new": true,
+    "is_escalation": false,
+    "first_seen": 1789276832.4772723,
+    "last_update": 1789276832.4772723,
+    "timeline": [
+      {
+        "state": "DETECTED",
+        "time": 1789276831.9772723,
+        "detail": "Target track #5 acquired"
+      },
+      {
+        "state": "INTRUSION_ENTRY",
+        "time": 1789276832.4772723,
+        "detail": "Triggered INTRUSION_ENTRY in Restricted Zero Line"
+      }
+    ],
+    "timeline_json": "[{\"state\": \"DETECTED\", \"time\": 1789276831.9772723, \"detail\": \"Target track #5 acquired\"}, {\"state\": \"INTRUSION_ENTRY\", \"time\": 1789276832.4772723, \"detail\": \"Triggered INTRUSION_ENTRY in Restricted Zero Line\"}]",
+    "last_store_time": 1789276832.4772723,
+    "last_evidence_capture": 1789276832.4772723
+  }
+}
