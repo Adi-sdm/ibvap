@@ -77,10 +77,19 @@ class TestUnknownPersonMemoryAndSafety:
 
     def test_02_two_layer_matching_and_unknown_creation(self):
         """Verify Layer 1 (known) vs Layer 2 (unknown) matching and automatic candidate registration."""
+        # Clean up any leftover test candidates for deterministic test isolation
+        db = SessionLocal()
+        try:
+            for c in db.query(UnknownFaceCandidateDB).all():
+                frs_subsystem.delete_unknown_candidate(c.candidate_id, operator="TEST-INIT")
+        finally:
+            db.close()
+
         # Generate random normalized 128-D vector
         np.random.seed(42)
         vec_a = np.random.randn(128).astype(np.float32)
         vec_a /= np.linalg.norm(vec_a)
+        self.__class__.vec_a = vec_a
 
         # 1. Matching against empty unknown gallery should return UNKNOWN_NEW
         m1 = frs_subsystem.match_embedding(vec_a.tolist(), data_mode="LIVE")
@@ -100,6 +109,7 @@ class TestUnknownPersonMemoryAndSafety:
             data_mode="LIVE"
         )
         cid_a = cand["candidate_id"]
+        self.__class__.cid_a = cid_a
         assert cid_a.startswith("UNKNOWN-U")
         assert cand["best_quality_score"] == 85.0
         assert cand["best_snapshot_path"] is not None
@@ -113,8 +123,11 @@ class TestUnknownPersonMemoryAndSafety:
     def test_03_unknown_candidate_separation(self):
         """Verify two different unknown individuals create distinct candidate IDs and never merge."""
         np.random.seed(99)
-        # Vector B completely orthogonal to Vector A
         vec_b = np.random.randn(128).astype(np.float32)
+        vec_a = getattr(self.__class__, "vec_a", None)
+        if vec_a is not None:
+            # Strictly orthogonalize against vec_a so cosine similarity is guaranteed 0.0
+            vec_b = vec_b - np.dot(vec_b, vec_a) * vec_a
         vec_b /= np.linalg.norm(vec_b)
 
         # Match should be UNKNOWN_NEW, not matching candidate A
@@ -134,7 +147,7 @@ class TestUnknownPersonMemoryAndSafety:
         )
         cid_b = cand_b["candidate_id"]
         assert cid_b.startswith("UNKNOWN-U")
-        assert cid_b != "UNKNOWN-U0001" or cid_b != cand_b["candidate_id"]
+        assert cid_b != getattr(self.__class__, "cid_a", "")
 
     def test_04_best_face_selection_and_sha256_update(self):
         """Verify candidate's best face snapshot upgrades when a higher-quality crop is observed."""
@@ -219,9 +232,12 @@ class TestUnknownPersonMemoryAndSafety:
             assert m_promoted["person_id"] == person_id
             assert "Hardeep Singh" in m_promoted["label"]
 
-            # Clean up enrolled person
+            # Clean up enrolled person and test candidates
             frs_subsystem.delete_person(person_id, operator="TEST-CLEANUP")
             frs_subsystem.delete_unknown_candidate(cid, operator="TEST-CLEANUP")
+            cid_a = getattr(self.__class__, "cid_a", None)
+            if cid_a:
+                frs_subsystem.delete_unknown_candidate(cid_a, operator="TEST-CLEANUP")
         finally:
             db.close()
 

@@ -2516,6 +2516,46 @@ def seed_demo_frs_identities():
 
         db.commit()
         frs_subsystem.reload_gallery()
+
+        # Seed demo unknown candidate records if none exist
+        existing_unknown = db.query(UnknownFaceCandidateDB).filter(UnknownFaceCandidateDB.is_demo == True).count()
+        if existing_unknown == 0:
+            demo_unknowns = [
+                {
+                    "candidate_id": "UNKNOWN-U0001",
+                    "camera_id": "CAM-02",
+                    "score": 84.5,
+                    "count": 4
+                },
+                {
+                    "candidate_id": "UNKNOWN-U0002",
+                    "camera_id": "CAM-03",
+                    "score": 79.0,
+                    "count": 2
+                }
+            ]
+            for u in demo_unknowns:
+                np.random.seed(abs(hash(u["candidate_id"])) % 100000)
+                u_vec = np.random.randn(128).astype(np.float32)
+                u_vec /= np.linalg.norm(u_vec)
+                enc_u = secrets_vault.encrypt_str(json.dumps([u_vec.tolist()]))
+                cand_db = UnknownFaceCandidateDB(
+                    candidate_id=u["candidate_id"],
+                    embeddings_enc=enc_u,
+                    best_snapshot_path=None,
+                    best_quality_score=u["score"],
+                    best_snapshot_hash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                    first_seen=datetime.now(timezone.utc),
+                    last_seen=datetime.now(timezone.utc),
+                    sighting_count=u["count"],
+                    last_camera_id=u["camera_id"],
+                    status="ACTIVE",
+                    is_demo=True
+                )
+                db.add(cand_db)
+            db.commit()
+            frs_subsystem.reload_unknown_gallery()
+
         return {"status": "seeded", "count": len(seeded_ids), "person_ids": seeded_ids}
     finally:
         db.close()

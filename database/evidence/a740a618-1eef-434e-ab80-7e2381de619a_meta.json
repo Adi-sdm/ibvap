@@ -1,0 +1,58 @@
+{
+  "event_id": "a740a618-1eef-434e-ab80-7e2381de619a",
+  "camera_id": "DEMO-54cdf072",
+  "timestamp": 1789276544.7241619,
+  "sha256_hash": "5141033ad6821f6541a7f47c922a0a2aa100dd79d90b6dae484ccab901044cbe",
+  "snapshot_file": "a740a618-1eef-434e-ab80-7e2381de619a_snapshot.jpg",
+  "clip_file": "a740a618-1eef-434e-ab80-7e2381de619a_clip.mp4",
+  "event_data": {
+    "camera_id": "DEMO-54cdf072",
+    "track_id": 3,
+    "event_type": "INTRUSION_ENTRY",
+    "zone_id": "PERIMETER_DEMO-54c",
+    "zone_name": "Sector Demo Perimeter",
+    "zone_type": "RESTRICTED",
+    "class_name": "person",
+    "confidence": 0.7956593036651611,
+    "timestamp": 1789276544.625791,
+    "bbox": [
+      133.64630126953125,
+      208.83383178710938,
+      173.1114501953125,
+      272.0686340332031
+    ],
+    "loitering_seconds": 0,
+    "risk_score": 75,
+    "severity": "Critical",
+    "explainability": [
+      "\u2713 Target identified as 'person' (+10 pts)",
+      "\u2713 Target entered Restricted Perimeter Zone (+35 pts)",
+      "\u2713 Physical boundary perimeter crossing detected (+30 pts)"
+    ],
+    "ai_summary": "Target activity detected in perimeter sector by person.",
+    "behaviour": "Walking",
+    "detected_objects": [
+      "person"
+    ],
+    "event_id": "a740a618-1eef-434e-ab80-7e2381de619a",
+    "is_new": true,
+    "is_escalation": false,
+    "first_seen": 1789276544.625791,
+    "last_update": 1789276544.625791,
+    "timeline": [
+      {
+        "state": "DETECTED",
+        "time": 1789276544.125791,
+        "detail": "Target track #3 acquired"
+      },
+      {
+        "state": "INTRUSION_ENTRY",
+        "time": 1789276544.625791,
+        "detail": "Triggered INTRUSION_ENTRY in Sector Demo Perimeter"
+      }
+    ],
+    "timeline_json": "[{\"state\": \"DETECTED\", \"time\": 1789276544.125791, \"detail\": \"Target track #3 acquired\"}, {\"state\": \"INTRUSION_ENTRY\", \"time\": 1789276544.625791, \"detail\": \"Triggered INTRUSION_ENTRY in Sector Demo Perimeter\"}]",
+    "last_store_time": 1789276544.625791,
+    "last_evidence_capture": 1789276544.625791
+  }
+}
