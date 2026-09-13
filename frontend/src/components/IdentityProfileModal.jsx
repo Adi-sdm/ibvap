@@ -4,9 +4,9 @@ import {
   MapPin, CheckCircle2, AlertTriangle, Radio, Hash, ArrowRight,
   ExternalLink, Sparkles, RefreshCw
 } from 'lucide-react';
-import { getFRSTimeline, exportFRSPerson, getFRSPerson } from '../services/api';
+import { getFRSTimeline, exportFRSPerson, getFRSPerson, getFRSUnknownCandidate } from '../services/api';
 
-export default function IdentityProfileModal({ personId, isOpen, onClose, operator = 'Supervisor' }) {
+export default function IdentityProfileModal({ personId, isOpen, onClose, onPromoteCandidate, operator = 'Supervisor' }) {
   const [profile, setProfile] = useState(null);
   const [timelineData, setTimelineData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -22,10 +22,34 @@ export default function IdentityProfileModal({ personId, isOpen, onClose, operat
   const loadDetails = async () => {
     setLoading(true);
     try {
-      const [pRes, tRes] = await Promise.all([
-        getFRSPerson(personId).catch(() => null),
-        getFRSTimeline(personId).catch(() => null)
-      ]);
+      let pRes = null;
+      if (personId.startsWith('UNKNOWN-') || personId.startsWith('DEMO-U')) {
+        const uRes = await getFRSUnknownCandidate(personId).catch(() => null);
+        if (uRes && uRes.candidate) {
+          const c = uRes.candidate;
+          pRes = {
+            person_id: c.candidate_id,
+            name: `Anonymous Candidate ${c.candidate_id}`,
+            rank: 'Unknown Subject',
+            designation: 'Unenrolled Biometric Entity',
+            organization: 'Cross-Border Sighting',
+            category: 'UNKNOWN',
+            status: c.status,
+            photo_path: c.best_snapshot_path,
+            quality_score: c.best_quality_score,
+            is_unknown_candidate: true,
+            sighting_count: c.sighting_count,
+            first_seen: c.first_seen,
+            last_seen: c.last_seen,
+            last_camera_id: c.last_camera_id,
+            created_at: c.created_at
+          };
+        }
+      } else {
+        pRes = await getFRSPerson(personId).catch(() => null);
+      }
+
+      const tRes = await getFRSTimeline(personId).catch(() => null);
       setProfile(pRes);
       setTimelineData(tRes);
     } catch (err) {
@@ -174,13 +198,30 @@ export default function IdentityProfileModal({ personId, isOpen, onClose, operat
                         </div>
                         <div className="flex items-center gap-1 text-slate-400">
                           <Camera className="w-3.5 h-3.5 text-sky-400" />
-                          <span>Enrolled Photos: <b>{profile?.photos?.length || 1}</b></span>
+                          <span>Sightings: <b>{timelineData?.total_sightings || profile?.sighting_count || 0}</b></span>
                         </div>
                         <div className="flex items-center gap-1 text-slate-400">
                           <Shield className="w-3.5 h-3.5 text-purple-400" />
                           <span>Biometrics: <b>Fernet Encrypted</b></span>
                         </div>
                       </div>
+
+                      {profile?.is_unknown_candidate && (
+                        <div className="mt-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between">
+                          <div className="text-xs font-mono text-amber-300">
+                            Anonymous Candidate Memory // Observed across {timelineData?.unique_cameras?.length || 1} cameras
+                          </div>
+                          {onPromoteCandidate && profile?.status !== 'PROMOTED' && (
+                            <button
+                              onClick={() => onPromoteCandidate(profile)}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-mono font-bold text-xs transition flex items-center gap-1.5"
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                              Promote to Enrolled Personnel
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -266,7 +307,24 @@ export default function IdentityProfileModal({ personId, isOpen, onClose, operat
                                 <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
                                   {item.status} ({Math.round((item.confidence || 0) * 100)}%)
                                 </span>
+                                {item.situation && (
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                                    item.situation === 'UNSAFE'
+                                      ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                      : item.situation === 'ATTENTION'
+                                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                      : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                  }`}>
+                                    {item.situation}
+                                  </span>
+                                )}
                               </div>
+
+                              {item.situation_reason && (
+                                <div className="text-[11px] font-mono text-amber-200/90 pt-0.5">
+                                  {item.situation_reason}
+                                </div>
+                              )}
 
                               <div className="text-xs font-mono text-slate-400 flex items-center gap-2">
                                 <Clock className="w-3.5 h-3.5 text-slate-500" />

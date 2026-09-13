@@ -216,6 +216,7 @@ export const updateFRSPerson = (personId, data, operator = 'Administrator') =>
 export const deleteFRSPerson = (personId, operator = 'Administrator') => 
   fetch(`${API_BASE}/frs/gallery/${encodeURIComponent(personId)}?operator=${encodeURIComponent(operator)}`, {
     method: 'DELETE'
+  }).then(handleResponse);
 export const exportFRSPerson = (personId, operator = 'Supervisor') => 
   fetch(`${API_BASE}/frs/gallery/${encodeURIComponent(personId)}/export?operator=${encodeURIComponent(operator)}`).then(handleResponse);
 export const getFRSCapabilities = () => fetch(`${API_BASE}/frs/capabilities`).then(handleResponse);
